@@ -2,10 +2,20 @@ version: '3.5'
 
 services:
 
+  db:
+      image: "postgres:9.6.5"
+      volumes:
+        - "dbdata:/var/lib/postgresql/data"
+      env_file:
+        - .env
+      networks:
+        - db_nw
   web:
     build: .
     image: web
     container_name: web
+    env_file:
+      - .env
     ports:
       - '5001:5000'
     command: python manage.py run -h 0.0.0.0
@@ -14,3 +24,55 @@ services:
     environment:
       - FLASK_DEBUG=1
       - APP_SETTINGS=project.server.config.DevelopmentConfig
+    networks:
+      - db_nw
+      - web_nw
+    depends_on:
+      - db
+      - redis
+
+  worker:
+    image: web
+    command: python manage.py run_worker
+    volumes:
+      - .:/usr/src/app
+    environment:
+      - APP_SETTINGS=project.server.config.DevelopmentConfig
+    depends_on:
+      - redis
+    networks:
+      - web_nw
+
+  redis:
+    image: redis:3.2.11
+    networks:
+      - web_nw
+
+  dashboard:
+    build: ./project/dashboard
+    image: dashboard
+    container_name: dashboard
+    ports:
+    - '9181:9181'
+    command: rq-dashboard -H redis
+    networks:
+      - web_nw
+
+  nginx:
+    image: "nginx:1.13.5"
+    ports:
+      - "8080:80"
+    volumes:
+      - ./project/conf.d:/etc/nginx/conf.d
+    networks:
+      - web_nw
+    depends_on:
+      - web
+
+networks:
+  db_nw:
+    driver: bridge
+  web_nw:
+    driver: bridge
+volumes:
+  dbdata:
