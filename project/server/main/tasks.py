@@ -1,6 +1,3 @@
-# project/server/main/tasks.py
-
-
 import time
 
 
