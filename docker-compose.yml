@@ -3,13 +3,13 @@ version: '3.5'
 services:
 
   db:
-      image: "postgres:9.6.5"
-      volumes:
-        - "dbdata:/var/lib/postgresql/data"
-      env_file:
-        - .env
-      networks:
-        - db_nw
+    image: "postgres:9.6.5"
+    volumes:
+      - "dbdata:/var/lib/postgresql/data"
+    env_file:
+      - .env
+    networks:
+      - db_nw
   web:
     build: .
     image: web
