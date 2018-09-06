@@ -9,6 +9,8 @@ class BaseConfig(object):
     WTF_CSRF_ENABLED = True
     REDIS_URL = 'redis://redis:6379/0'
     QUEUES = ['default']
+    UPLOAD_FOLDER = './project/server/audios'
+    ALLOWED_EXTENSIONS = {'wav'}
 
 
 class DevelopmentConfig(BaseConfig):
