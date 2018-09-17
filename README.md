@@ -1,6 +1,6 @@
-# Docker + Flask + NGINX + Postgres + Redis Queue
+# Docker + Flask + NGINX + MYSQL + Redis Queue
 
-Example of how to handle background processes with Flask, Redis Queue, and Docker. Also with PostgreSQL integration and a NGINX server.  
+Example of how to handle background processes with Flask, Redis Queue, and Docker. Also with MYSQL integration and a NGINX server.  
  
 
 * This repository is a mix of:
