@@ -19,6 +19,11 @@ $ docker-compose up -d db
 $ docker-compose run --rm web /bin/bash -c "cd /usr/src/app && python -c  'import database; database.init_db()'"
 ```
 
+ Access db container
+```sh
+$ docker-compose run --rm db psql -h db -U postgres
+``` 
+
 Spin up the others containers:
 ```sh
 $ docker-compose up -d

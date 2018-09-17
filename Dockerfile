@@ -10,5 +10,7 @@ ADD ./requirements.txt /usr/src/app/requirements.txt
 WORKDIR /usr/src/app/
 COPY . /usr/src/app/
 EXPOSE 5001
+
 # install requirements
-RUN pip install -r requirements.txt
+RUN pip3 install --upgrade pip
+RUN pip3 install -r requirements.txt

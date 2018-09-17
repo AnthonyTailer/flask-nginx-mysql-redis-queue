@@ -4,11 +4,12 @@ Flask-Script==2.0.6
 Flask-Testing==0.6.2
 flask-restful
 flask-jwt-extended
+Flask-SQLAlchemy==2.1
+Flask-Migrate==1.8.0
+psycopg2==2.6.1
+mysqlclient
 passlib
 Werkzeug
 blinker
-psycopg2
-SQLAlchemy
 redis==2.10.6
 rq==0.10.0
-SpeechRecognition

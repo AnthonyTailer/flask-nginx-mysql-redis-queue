@@ -3,13 +3,18 @@ version: '3.5'
 services:
 
   db:
-    image: "postgres:9.6.5"
+    image: mysql/mysql-server
+    container_name: db
     volumes:
-      - "dbdata:/var/lib/postgresql/data"
+      - "./dbdata:/var/lib/mysql/"
     env_file:
       - .env
     networks:
       - db_nw
+    expose:
+      - 3306
+    ports:
+      - "32000:3306"
   web:
     build: .
     image: web
@@ -34,6 +39,8 @@ services:
   worker:
     image: web
     command: python manage.py run_worker
+    env_file:
+      - .env
     volumes:
       - .:/usr/src/app
     environment:
@@ -57,7 +64,6 @@ services:
     command: rq-dashboard -H redis
     networks:
       - web_nw
-
   nginx:
     image: "nginx:1.13.5"
     ports:

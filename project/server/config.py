@@ -11,11 +11,13 @@ class BaseConfig(object):
     QUEUES = ['default']
     UPLOAD_FOLDER = './project/server/audios'
     ALLOWED_EXTENSIONS = {'wav'}
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 
 class DevelopmentConfig(BaseConfig):
     """Development configuration."""
     WTF_CSRF_ENABLED = False
+    PRESERVE_CONTEXT_ON_EXCEPTION = False
 
 
 class TestingConfig(BaseConfig):
