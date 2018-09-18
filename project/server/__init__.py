@@ -74,12 +74,13 @@ def create_app(script_info=None):
     api.add_resource(UserRegistration, '/api/registration')
     api.add_resource(UserLogin, '/api/login')
     api.add_resource(UserLogoutAccess, '/api/logout')
-    api.add_resource(AllUsers, '/api/users')
-    api.add_resource(SecretResource, '/api/secret')
+    api.add_resource(User, '/api/user') # GET and PUT
+    api.add_resource(UserResetPassword, '/api/user/change/password')
 
     # Word routes
-    api.add_resource(Word, '/api/word/<word>')
-    api.add_resource(WordRegistration, '/api/word') # get word and yours transcriptions
+    api.add_resource(Word, '/api/word/<word>') # PUT, DELETE and GET word and yours transcriptions
+    api.add_resource(WordRegistration, '/api/word')
+    api.add_resource(WordAll, '/api/word/all')
 
     # WordTranscription routes
     api.add_resource(WordTranscription, '/api/transcription/<transcription_id>')
@@ -90,5 +91,7 @@ def create_app(script_info=None):
 
     # Audio routes
     api.add_resource(AudioTranscription, '/api/audio/transcription')
+
+    api.add_resource(SecretResource, '/api/secret')
 
     return app

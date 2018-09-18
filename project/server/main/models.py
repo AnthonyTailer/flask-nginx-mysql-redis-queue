@@ -1,5 +1,5 @@
 from database import Base, db_session
-from sqlalchemy import Column, Integer, String, Date, ForeignKey, PrimaryKeyConstraint
+from sqlalchemy import Column, Integer, String, Date, ForeignKey, PrimaryKeyConstraint, func
 from sqlalchemy.orm import relationship
 import enum
 from passlib.hash import pbkdf2_sha256 as sha256
@@ -31,6 +31,12 @@ class UserModel(Base):
         db_session.add(self)
         db_session.commit()
 
+    def update_to_db(self, username, fullname, type):
+        db_session.query(UserModel) \
+            .filter(UserModel.username == self.username) \
+            .update({'username': username, 'fullname': fullname, 'type': type})
+        db_session.commit()
+
     def __repr__(self):
         return '{}'.format(self.username)
 
@@ -48,30 +54,31 @@ class UserModel(Base):
 
     @classmethod
     def change_password(cls, username, new_password):
-        db_session.query(UserModel)\
-            .filter(UserModel.username == username)\
+        db_session.query(UserModel) \
+            .filter(UserModel.username == username) \
             .update({'password': cls.generate_hash(new_password)})
         db_session.commit()
 
-    @classmethod
-    def return_all(cls):
-        def to_json(x):
-            return {
-                'username': x.username,
-                'type': x.type
-            }
+    # @classmethod
+    # def return_all(cls):
+    #     def to_json(x):
+    #         return {
+    #             'username': x.username,
+    #             'fullname': x.fullname,
+    #             'type': x.type
+    #         }
+    #
+    #     return {'users': list(map(lambda x: to_json(x), db_session.query(UserModel).all()))}
 
-        return {'users': list(map(lambda x: to_json(x), db_session.query(UserModel).all()))}
-
-    @classmethod
-    def delete_all(cls):
-        try:
-            num_rows_deleted = db_session.query(UserModel).delete()
-            db_session.commit()
-            return {'message': '{} registro(s) deletados'.format(num_rows_deleted)}
-
-        except:
-            return {'message': 'Algo de errado não está certo'}, 500
+    # @classmethod
+    # def delete_all(cls):
+    #     try:
+    #         num_rows_deleted = db_session.query(UserModel).delete()
+    #         db_session.commit()
+    #         return {'message': '{} registro(s) deletados'.format(num_rows_deleted)}
+    #
+    #     except:
+    #         return {'message': 'Algo de errado não está certo'}, 500
 
 
 class RevokedTokenModel(Base):
@@ -176,41 +183,52 @@ class WordModel(Base):
     def __repr__(self):
         return '{}'.format(self.word)
 
+    def orderdefinition(self):
+        return db_session.query(func.count(WordModel.id)).scalar() + 1
+
     id = Column(Integer, primary_key=True)
     word = Column(String(255), nullable=False, unique=True)
     tip = Column(String(255))
-    order = Column(Integer)
-    img_link = Column(String(255))
-    audio_link = Column(String(255))
+    order = Column(Integer,  default=orderdefinition)
 
-    transcription = relationship("WordTranscriptionModel", back_populates="word")
+    transcription = relationship("WordTranscriptionModel", back_populates="word", cascade="all, delete")
 
     def save_to_db(self):
         db_session.add(self)
         db_session.commit()
 
-    def update_to_db(self):
-        db_session.update(self)
+    def update_to_db(self, word, tip):
+        db_session.query(WordModel) \
+            .filter(WordModel.word == self.word) \
+            .update({'word': word, 'tip': tip})
+        db_session.commit()
+
+    @classmethod
+    def delete_by_word(cls, word):
+        word_delete = db_session.query(WordModel).filter(WordModel.word == word).first()
+        db_session.delete(word_delete)
         db_session.commit()
 
     @classmethod
     def find_by_word(cls, word):
         return db_session.query(WordModel).filter(WordModel.word == word).first()
 
-    @classmethod
-    def delete_by_word(cls, word):
-        return db_session.query(WordModel).filter(WordModel.word == word).delete()
+
+
+    # @classmethod
+    # def return_all(cls):
+    #     def to_json(x):
+    #         return {
+    #             'id': x.id,
+    #             'word': x.word,
+    #             'audio_link': x.audio_link
+    #         }
+    #
+    #     return {'words': list(map(lambda x: to_json(x), db_session.query(WordModel).all()))}
 
     @classmethod
     def return_all(cls):
-        def to_json(x):
-            return {
-                'id': x.id,
-                'word': x.word,
-                'audio_link': x.audio_link
-            }
-
-        return {'words': list(map(lambda x: to_json(x), db_session.query(WordModel).all()))}
+        return db_session.query(WordModel).all()
 
 
 class WordTranscriptionModel(Base):
@@ -222,13 +240,23 @@ class WordTranscriptionModel(Base):
     id = Column(Integer, primary_key=True)
     transcription = Column(String(255), nullable=False, unique=True)
     type = Column(Integer)
-
-    word_id = Column(Integer, ForeignKey('words.id'))
+    word_id = Column(Integer, ForeignKey('words.id', ondelete=u'CASCADE'))
     word = relationship("WordModel", back_populates="transcription")
 
     def save_to_db(self):
         db_session.add(self)
         db_session.commit()
+
+    def update_to_db(self, word_id, transcription):
+        db_session.query(WordTranscriptionModel) \
+            .filter(WordTranscriptionModel.transcription == self.transcription) \
+            .update({'word_id': word_id, 'transcription': transcription})
+        db_session.commit()
+
+    def delete_transcription(self):
+        db_session.delete(self)
+        db_session.commit()
+
 
     @classmethod
     def find_by_word_id(cls, word_id):

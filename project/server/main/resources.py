@@ -8,7 +8,7 @@ from rq import Queue, Connection
 from werkzeug.utils import secure_filename
 from project.server.main.tasks import google_transcribe_audio
 from project.server.main.helpers import generate_hash_from_filename, allowed_file
-from flask_jwt_extended import (create_access_token, jwt_required, get_raw_jwt)
+from flask_jwt_extended import (create_access_token, jwt_required, get_raw_jwt, get_jwt_identity)
 from project.server.main.models import *
 
 import logging
@@ -63,7 +63,8 @@ class UserRegistration(Resource):
             logger.info('Usuário {} criado com sucesso'.format(data['username']))
             return {
                        'message': 'Usuário {} criado com sucesso'.format(data['username']),
-                       'access_token': access_token
+                       'access_token': access_token,
+                       'login': 'api/login'
                    }, 201
         except Exception as e:
             logger.error('Error {}'.format(e))
@@ -75,7 +76,6 @@ class UserLogin(Resource):
     parser.add_argument('username', help='username é obrigatório', required=True)
     parser.add_argument('password', help='senha é obrigatório', required=True)
 
-    @jwt_required
     def post(self):
 
         data = self.parser.parse_args()
@@ -89,6 +89,7 @@ class UserLogin(Resource):
             return {
                 'message': 'Logado como {}'.format(current_user.username),
                 'access_token': access_token,
+                'info': 'api/user'
             }
         else:
             return {'message': 'Senha ou username incorretos'}, 401
@@ -100,7 +101,8 @@ class UserResetPassword(Resource):
     parser.add_argument('new_password', help='Nova senha é obrigatória', required=True)
 
     @jwt_required
-    def post(self, username=None):
+    def post(self):
+        username = get_jwt_identity()
         data = self.parser.parse_args()
         current_user = UserModel.find_by_username(username)
 
@@ -110,9 +112,15 @@ class UserResetPassword(Resource):
             try:
                 UserModel.change_password(username, data['new_password'])
                 logger.info('Senha alterada com sucesso')
-                return {
-                           'message': 'Senha alterada com sucesso',
-                       }, 200
+                try:
+                    jti = get_raw_jwt()['jti']
+                    revoked_token = RevokedTokenModel(jti=jti)
+                    revoked_token.add()
+                    return {
+                               'message': 'Senha alterada com sucesso',
+                           }, 200
+                except Exception as e:
+                    return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
             except Exception as e:
                 logger.error('Error {}'.format(e))
                 return {'message': 'Algo de errado não está certo'}, 500
@@ -128,19 +136,72 @@ class UserLogoutAccess(Resource):
             revoked_token = RevokedTokenModel(jti=jti)
             revoked_token.add()
             return {'message': 'O seu token de acesso foi revogado com sucesso'}
-        except:
-            return {'message': 'Algo de errado não está certo'}, 500
+        except Exception as e:
+            return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
 
 
-class AllUsers(Resource):
+class User(Resource):
 
     @jwt_required
     def get(self):
-        return UserModel.return_all()
+        current_user = get_jwt_identity()
+        resource_fields = {
+            'id': fields.Integer,
+            'username': fields.String,
+            'fullname': fields.String,
+            'type': fields.String
+        }
+        return marshal(UserModel.find_by_username(current_user), resource_fields, envelope='data')
 
     @jwt_required
-    def delete(self):
-        return UserModel.delete_all()
+    def put(self):
+        username = get_jwt_identity()
+        parser = reqparse.RequestParser()
+        parser.add_argument('username', help='username é obrigatório', required=True)
+        parser.add_argument('fullname', help='Nome completo é obrigatório', required=True)
+        parser.add_argument(
+            'type', choices=('anonymous', 'therapist'),
+            help='Erro: tipo de usuário é obrigatório e deve ser uma string válida',
+            required=True
+        )
+        data = parser.parse_args()
+        current_user = UserModel.find_by_username(username)
+        new_user = UserModel.find_by_username(data['username'])
+
+        if not current_user:
+            return {'message': 'Usuário inexistente'.format(username)}
+
+        if new_user:
+            if (new_user.username != current_user.username) and (new_user.id != current_user.id):
+                logger.warn('Usuário {} já existe'.format(data['username']))
+                return {'message': 'Usuário {} já existe'.format(data['username'])}, 422
+
+        try:
+            current_user.update_to_db(data['username'], data['fullname'], data['type'])
+            logger.info('Usuário alterada com sucesso')
+            try:
+                if data['username'].strip() != username.strip():
+                    jti = get_raw_jwt()['jti']
+                    revoked_token = RevokedTokenModel(jti=jti)
+                    revoked_token.add()
+                return {
+                           'message': 'Usuário alterada com sucesso',
+                       }, 200
+            except Exception as e:
+                return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
+        except Exception as e:
+            return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
+
+
+# class AllUsers(Resource):
+#
+#     @jwt_required
+#     def get(self):
+#         return UserModel.return_all()
+#
+#     @jwt_required
+#     def delete(self):
+#         return UserModel.delete_all()
 
 
 # WordModel resources
@@ -161,6 +222,37 @@ class Word(Resource):
         return marshal(WordModel.find_by_word(word), resource_fields, envelope='data')
 
     @jwt_required
+    def put(self, word=None):
+        current_word = WordModel.find_by_word(word)
+
+        if not current_word:
+            return {'message': 'Palavra não encontrada'}, 404
+
+        parser = reqparse.RequestParser()
+        parser.add_argument('word', help='palavra é obrigatório', required=True)
+        parser.add_argument('tip')
+
+        data = parser.parse_args()
+        new_word = WordModel.find_by_word(data['word'])
+
+        if new_word:
+            if (new_word.word != current_word.word) and (new_word.id != current_word.id):
+                logger.warn('Palavra {} já existe'.format(data['word']))
+                return {'message': 'Palavra {} já existe'.format(data['word'])}
+
+        try:
+            current_word.update_to_db(word=data['word'], tip=data['tip'])
+
+            logger.info('Palavra {} atualizada com sucesso'.format(data['word']))
+            return {
+                       'message': 'Palavra {} atualizada com sucesso'.format(data['word']),
+                       'route': '/api/word/{}'.format(current_word.word)
+                   }, 201
+        except Exception as e:
+            logger.error('Error {}'.format(e))
+            return {'message': 'Algo de errado não está certo, não foi possível atualizar sua palavra'}, 500
+
+    @jwt_required
     def delete(self, word=None):
         if not word:
             return {'message': 'Palavra não encontrada'}, 404
@@ -176,10 +268,17 @@ class Word(Resource):
             return {'message': 'Algo de errado não está certo, não foi possível deletar sua palavra'}, 500
 
 
-class AllWord(Resource):
+class WordAll(Resource):
     @jwt_required
     def get(self):
-        return WordModel.return_all()
+        resource_fields = {
+            'id': fields.Integer,
+            'word': fields.String,
+            'tip': fields.String,
+            'transcription': fields.List(fields.String)
+        }
+
+        return marshal(WordModel.return_all(), resource_fields, envelope='data')
 
 
 class WordRegistration(Resource):
@@ -188,7 +287,6 @@ class WordRegistration(Resource):
         parser = reqparse.RequestParser()
         parser.add_argument('word', help='palavra é obrigatório', required=True)
         parser.add_argument('tip')
-        parser.add_argument('audio_link')
 
         data = parser.parse_args()
 
@@ -198,8 +296,7 @@ class WordRegistration(Resource):
 
         new_word = WordModel(
             word=data['word'],
-            tip=data['tip'],
-            audio_link=data['audio_link']
+            tip=data['tip']
         )
         try:
             new_word.save_to_db()
@@ -224,7 +321,6 @@ class WordTranscription(Resource):
             return {'message': 'Transcrição não encontrada'}
 
         transc = WordTranscriptionModel.find_by_transcription_id(transcription_id)
-        logger.info('TRANS -> {}'.format(transc))
 
         if not transc:
             return {'message': 'Transcrição não encontrada'}, 404
@@ -237,6 +333,59 @@ class WordTranscription(Resource):
 
         return marshal(WordTranscriptionModel.find_by_transcription_id(transcription_id), resource_fields,
                        envelope='data')
+
+    @jwt_required
+    def put(self, transcription_id=None):
+        if not transcription_id:
+            return {'message': 'Transcrição não encontrada'}
+
+        transc = WordTranscriptionModel.find_by_transcription_id(transcription_id)
+
+        if not transc:
+            return {'message': 'Transcrição não encontrada'}, 404
+
+        parser = reqparse.RequestParser()
+        parser.add_argument('transcription', help='transcrição é obrigatório', required=True)
+        parser.add_argument('word', help='A palavra é obrigatório', required=True)
+
+        data = parser.parse_args()
+
+        word = WordModel.find_by_word(data['word'])
+
+        if word is None:
+            logger.warn('Palavra {} inexistente'.format(data['word']))
+            return {'message': 'Palavra {} inexistente'.format(data['word'])}
+
+        try:
+            transc.update_to_db(word_id=word.id, transcription=data['transcription'])
+            logger.info('Transcription {} atualizada com sucesso'.format(data['transcription']))
+            return {
+                       'message': 'Transcription {} atualizada com sucesso'.format(data['transcription']),
+                       'route': '/api/transcription/{}'.format(transc.id)
+                   }, 201
+        except Exception as e:
+            logger.error('Error {}'.format(e))
+            return {'message': 'Algo de errado não está certo, não foi possível atualizar sua palavra'}, 500
+
+    @jwt_required
+    def delete(self, transcription_id=None):
+        if not transcription_id:
+            return {'message': 'Transcrição não encontrada'}
+
+        transc = WordTranscriptionModel.find_by_transcription_id(transcription_id)
+
+        if not transc:
+            return {'message': 'Transcrição não encontrada'}, 404
+
+        try:
+            transc.delete_transcription()
+            logger.info('Transcrição {} deletada com sucesso'.format(transc.transcription))
+            return {
+                'message': 'Transcrição {} deletada com sucesso'.format(transc.transcription),
+            }
+        except Exception as e:
+            logger.error('Error {}'.format(e))
+            return {'message': 'Algo de errado não está certo, não foi possível deletar sua Transcrição'}, 500
 
 
 class WordTranscriptionRegistration(Resource):
@@ -256,7 +405,7 @@ class WordTranscriptionRegistration(Resource):
 
         new_transcription = WordTranscriptionModel(
             word_id=word.id,
-            transcription=data['transcription']
+            transcription=str(data['transcription']).strip()
         )
         try:
             new_transcription.save_to_db()
