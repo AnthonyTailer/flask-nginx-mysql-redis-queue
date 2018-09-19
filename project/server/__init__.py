@@ -77,9 +77,12 @@ def create_app(script_info=None):
     api.add_resource(User, '/api/user') # GET and PUT
     api.add_resource(UserResetPassword, '/api/user/change/password')
 
+    # Patitent routes
+    api.add_resource(PatientRegistration, '/api/patient')
+
     # Word routes
-    api.add_resource(Word, '/api/word/<word>') # PUT, DELETE and GET word and yours transcriptions
     api.add_resource(WordRegistration, '/api/word')
+    api.add_resource(Word, '/api/word/<word>') # PUT, DELETE and GET word and yours transcriptions
     api.add_resource(WordAll, '/api/word/all')
 
     # WordTranscription routes

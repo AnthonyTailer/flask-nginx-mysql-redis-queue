@@ -1,6 +1,7 @@
 import hashlib
 import uuid
 from flask import current_app
+from datetime import datetime, timezone, timedelta
 
 
 def generate_hash_from_filename(fname):
@@ -17,3 +18,11 @@ def get_path(fname):
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
+
+
+def get_date_br():
+    now = datetime.now()
+    diff = timedelta(hours=-3)
+    tz = timezone(diff)
+    sp_now = now.astimezone(tz)
+    return sp_now.strftime('%Y-%m-%d')

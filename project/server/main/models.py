@@ -3,6 +3,7 @@ from sqlalchemy import Column, Integer, String, Date, ForeignKey, PrimaryKeyCons
 from sqlalchemy.orm import relationship
 import enum
 from passlib.hash import pbkdf2_sha256 as sha256
+from project.server.main.helpers import get_date_br
 
 
 class EnumType(enum.Enum):
@@ -106,15 +107,15 @@ class PatientModel(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     birth = Column(Date, nullable=False)
-    sex = Column(String(1), nullable=False)
+    sex = Column(String(1))
     school = Column(String(255), nullable=False)
     school_type = Column(String(3))
-    caregiver = Column(String(255), nullable=False)  # responsavel
+    caregiver = Column(String(255))  # responsavel
     phone = Column(String(255))
     city = Column(String(255), nullable=False)
     state = Column(String(2), nullable=False)
     address = Column(String(255), nullable=False)
-    created_at = Column(Date, nullable=False)
+    created_at = Column(Date, nullable=False, default=get_date_br)
 
     evaluation = relationship("EvaluationModel", back_populates="patient")
 

@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-
+import argparse
 import os
 import redis
+from datetime import datetime
 from flask import request, current_app
-from flask_restful import Resource, reqparse, fields, marshal
+from flask_restful import Resource, reqparse, fields, marshal, inputs
 from rq import Queue, Connection
 from werkzeug.utils import secure_filename
 from project.server.main.tasks import google_transcribe_audio
@@ -23,9 +24,20 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 
+class ValidationsHelper:
+    @staticmethod
+    def valid_date(s):
+        try:
+            return datetime.strptime(s, "%Y-%m-%d")
+        except ValueError as e:
+            msg = "A data fornecida é inválida: '{0}'.".format(s)
+            logger.error('{} {}'.format(msg, e))
+            return msg
+
+
 # UserModel resources
 class UserRegistration(Resource):
-    parser = reqparse.RequestParser()
+    parser = reqparse.RequestParser(bundle_errors=True)
     parser.add_argument('username', help='username é obrigatório', required=True)
     parser.add_argument('fullname', help='Nome completo é obrigatório', required=True)
     parser.add_argument('password', help='senha é obrigatório', required=True)
@@ -72,7 +84,7 @@ class UserRegistration(Resource):
 
 
 class UserLogin(Resource):
-    parser = reqparse.RequestParser()
+    parser = reqparse.RequestParser(bundle_errors=True)
     parser.add_argument('username', help='username é obrigatório', required=True)
     parser.add_argument('password', help='senha é obrigatório', required=True)
 
@@ -96,7 +108,7 @@ class UserLogin(Resource):
 
 
 class UserResetPassword(Resource):
-    parser = reqparse.RequestParser()
+    parser = reqparse.RequestParser(bundle_errors=True)
     parser.add_argument('current_password', help='Senha atual é obrigatória', required=True)
     parser.add_argument('new_password', help='Nova senha é obrigatória', required=True)
 
@@ -156,7 +168,7 @@ class User(Resource):
     @jwt_required
     def put(self):
         username = get_jwt_identity()
-        parser = reqparse.RequestParser()
+        parser = reqparse.RequestParser(bundle_errors=True)
         parser.add_argument('username', help='username é obrigatório', required=True)
         parser.add_argument('fullname', help='Nome completo é obrigatório', required=True)
         parser.add_argument(
@@ -193,15 +205,69 @@ class User(Resource):
             return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
 
 
-# class AllUsers(Resource):
-#
-#     @jwt_required
-#     def get(self):
-#         return UserModel.return_all()
-#
-#     @jwt_required
-#     def delete(self):
-#         return UserModel.delete_all()
+# Patient resources
+class PatientRegistration(Resource):
+    @jwt_required
+    def post(self):
+        parser = reqparse.RequestParser(bundle_errors=True)
+        parser.add_argument('name', help='Nome completo é obrigatório', required=True)
+        parser.add_argument(
+            'birth',
+            help='Data de nascimento é obrigatória e deve estar no formato YYYY-mm-dd',
+            required=True,
+            type=inputs.date
+        )
+        parser.add_argument(
+            'sex',
+            choices=('M', 'F', ''),
+            help='Sexualidade deve ser um valor válido (M, F), ou não deve ser fornecida',
+            nullable=True,
+            required=False
+        )
+        parser.add_argument('school', help='Escola é obrigatória', required=True)
+        parser.add_argument(
+            'school_type',
+            choices=('PUB', 'PRI'),
+            help='Orgão escolar é obrigatório e deve ser uma string válida (PUB, PRI) ',
+            required=True
+        )
+        parser.add_argument('caregiver', nullable=True)
+        parser.add_argument('phone', nullable=True)
+        parser.add_argument('city', help="A Cidade é obrigatória", required=True)
+        parser.add_argument('state', help="O Estado é obrigatória", required=True)
+        parser.add_argument('address', nullable=True)
+
+        data = parser.parse_args()
+
+        if PatientModel.find_by_name(data['name']):
+            logger.warn('Paciente {} já existe'.format(data['name']))
+            return {'message': 'Usuário {} já existe'.format(data['name'])}, 422
+
+        new_patient = PatientModel(
+            name=data['name'],
+            birth=data['birth'],
+            sex=data['sex'],
+            school=data['school'],
+            school_type=data['school_type'],
+            caregiver=data['caregiver'],
+            phone=data['phone'],
+            city=data['city'],
+            state=data['state'],
+            address=data['address'],
+        )
+
+        try:
+            new_patient.save_to_db()
+            logger.info('Paciente {} criado com sucesso'.format(data['name']))
+            return {
+                       'message': 'Paciente {} criado com sucesso'.format(data['name']),
+                       'info': 'api/pacient/{}'.format(new_patient.id)
+                   }, 201
+        except Exception as e:
+            logger.error('Error - PACIENT -> {}'.format(e))
+            return {'message': 'Algo de errado não está certo, não foi possível criar o paciente'}, 500
+
+
 
 
 # WordModel resources
@@ -228,7 +294,7 @@ class Word(Resource):
         if not current_word:
             return {'message': 'Palavra não encontrada'}, 404
 
-        parser = reqparse.RequestParser()
+        parser = reqparse.RequestParser(bundle_errors=True)
         parser.add_argument('word', help='palavra é obrigatório', required=True)
         parser.add_argument('tip')
 
@@ -284,7 +350,7 @@ class WordAll(Resource):
 class WordRegistration(Resource):
     @jwt_required
     def post(self):
-        parser = reqparse.RequestParser()
+        parser = reqparse.RequestParser(bundle_errors=True)
         parser.add_argument('word', help='palavra é obrigatório', required=True)
         parser.add_argument('tip')
 
@@ -312,7 +378,6 @@ class WordRegistration(Resource):
 
 
 # WordTranscriptionModel resources
-
 class WordTranscription(Resource):
 
     @jwt_required
@@ -344,7 +409,7 @@ class WordTranscription(Resource):
         if not transc:
             return {'message': 'Transcrição não encontrada'}, 404
 
-        parser = reqparse.RequestParser()
+        parser = reqparse.RequestParser(bundle_errors=True)
         parser.add_argument('transcription', help='transcrição é obrigatório', required=True)
         parser.add_argument('word', help='A palavra é obrigatório', required=True)
 
@@ -391,7 +456,7 @@ class WordTranscription(Resource):
 class WordTranscriptionRegistration(Resource):
     @jwt_required
     def post(self):
-        parser = reqparse.RequestParser()
+        parser = reqparse.RequestParser(bundle_errors=True)
         parser.add_argument('transcription', help='transcrição é obrigatório', required=True)
         parser.add_argument('word', help='A palavra é obrigatório', required=True)
 
@@ -420,17 +485,7 @@ class WordTranscriptionRegistration(Resource):
             return {'message': 'Algo de errado não está certo, não foi possível cadastrar sua Transcrição'}, 500
 
 
-class SecretResource(Resource):
-
-    @jwt_required
-    def get(self):
-        return {
-            'answer': 42
-        }
-
-
-## Tasks Resources
-
+# Tasks Resources
 class TaskStatus(Resource):
 
     @jwt_required
@@ -452,9 +507,7 @@ class TaskStatus(Resource):
         return response_object
 
 
-## Audio tasks
-
-
+# Audio tasks
 class AudioTranscription(Resource):
     def post(self):
         if request.method == 'POST':
@@ -494,3 +547,11 @@ class AudioTranscription(Resource):
                 }
 
                 return response_object, 202
+
+
+class SecretResource(Resource):
+    @jwt_required
+    def get(self):
+        return {
+            'answer': 42
+        }
