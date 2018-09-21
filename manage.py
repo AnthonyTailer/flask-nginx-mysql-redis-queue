@@ -36,8 +36,9 @@ db_uri = 'mysql://%s:%s@%s:%s/%s' % (user, pwd, host, port, db)
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 
 @cli.command()
-@click.argument('option')
-def db(option):
+@click.argument('option1')
+@click.argument('option2', required=False)
+def db(option1, option2):
     manager.run()
 
 

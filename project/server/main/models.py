@@ -1,5 +1,5 @@
 from database import Base, db_session
-from sqlalchemy import Column, Integer, String, Date, ForeignKey, PrimaryKeyConstraint, func
+from sqlalchemy import Column, Integer, String, Date, Boolean, ForeignKey, PrimaryKeyConstraint, func
 from sqlalchemy.orm import relationship
 import enum
 from passlib.hash import pbkdf2_sha256 as sha256
@@ -60,27 +60,6 @@ class UserModel(Base):
             .update({'password': cls.generate_hash(new_password)})
         db_session.commit()
 
-    # @classmethod
-    # def return_all(cls):
-    #     def to_json(x):
-    #         return {
-    #             'username': x.username,
-    #             'fullname': x.fullname,
-    #             'type': x.type
-    #         }
-    #
-    #     return {'users': list(map(lambda x: to_json(x), db_session.query(UserModel).all()))}
-
-    # @classmethod
-    # def delete_all(cls):
-    #     try:
-    #         num_rows_deleted = db_session.query(UserModel).delete()
-    #         db_session.commit()
-    #         return {'message': '{} registro(s) deletados'.format(num_rows_deleted)}
-    #
-    #     except:
-    #         return {'message': 'Algo de errado não está certo'}, 500
-
 
 class RevokedTokenModel(Base):
     __tablename__ = 'revoked_tokens'
@@ -114,7 +93,7 @@ class PatientModel(Base):
     phone = Column(String(255))
     city = Column(String(255), nullable=False)
     state = Column(String(2), nullable=False)
-    address = Column(String(255), nullable=False)
+    address = Column(String(255))
     created_at = Column(Date, nullable=False, default=get_date_br)
 
     evaluation = relationship("EvaluationModel", back_populates="patient")
@@ -123,59 +102,34 @@ class PatientModel(Base):
         db_session.add(self)
         db_session.commit()
 
+    def update_to_db(self, name, birth, sex, school, school_type, caregiver, phone, city, state, address):
+        db_session.query(PatientModel) \
+            .filter(PatientModel.id == self.id) \
+            .update({
+            'name': name,
+            'birth': birth,
+            'sex': sex,
+            'school': school,
+            'school_type': school_type,
+            'caregiver': caregiver,
+            'phone': phone,
+            'city': city,
+            'state': state,
+            'address': address,
+        })
+        db_session.commit()
+
     @classmethod
     def find_by_name(cls, name):
         return db_session.query(PatientModel).filter(PatientModel.name == name).first()
 
     @classmethod
-    def return_all(cls):
-        def to_json(x):
-            return {
-                'id': x.id,
-                'name': x.name
-            }
-
-        return {'patients': list(map(lambda x: to_json(x), db_session.query(PatientModel).all()))}
-
-
-class EvaluationModel(Base):
-    __tablename__ = 'evaluations'
-    __table_args__ = (
-        PrimaryKeyConstraint('id', 'patient_id', 'evaluator_id'),
-    )
-
-    def __repr__(self):
-        return '{}'.format(self.id)
-
-    id = Column(Integer, primary_key=True)
-    date = Column(Date, nullable=False)
-    type = Column(String(1))
-
-    patient_id = Column(Integer, ForeignKey('patients.id'))
-    patient = relationship("PatientModel", back_populates="evaluation")
-
-    evaluator_id = Column(Integer, ForeignKey('users.id'))
-    evaluator = relationship("UserModel", back_populates="evaluation")
-
-    def save_to_db(self):
-        db_session.add(self)
-        db_session.commit()
-
-    @classmethod
-    def find_by_user(cls, user_id):
-        return db_session.query(EvaluationModel).filter(EvaluationModel.evaluator_id == user_id).first()
+    def find_by_id(cls, id):
+        return db_session.query(PatientModel).filter(PatientModel.id == id).first()
 
     @classmethod
     def return_all(cls):
-        def to_json(x):
-            return {
-                'id': x.id,
-                'date': x.date,
-                'evaluator': x.evaluator,
-                'patient': x.patient
-            }
-
-        return {'evaluations': list(map(lambda x: to_json(x), db_session.query(EvaluationModel).all()))}
+        return db_session.query(PatientModel).all()
 
 
 class WordModel(Base):
@@ -190,9 +144,10 @@ class WordModel(Base):
     id = Column(Integer, primary_key=True)
     word = Column(String(255), nullable=False, unique=True)
     tip = Column(String(255))
-    order = Column(Integer,  default=orderdefinition)
+    order = Column(Integer, default=orderdefinition)
 
     transcription = relationship("WordTranscriptionModel", back_populates="word", cascade="all, delete")
+    evaluations = relationship('EvaluationModel', secondary='word_evaluation')
 
     def save_to_db(self):
         db_session.add(self)
@@ -213,19 +168,6 @@ class WordModel(Base):
     @classmethod
     def find_by_word(cls, word):
         return db_session.query(WordModel).filter(WordModel.word == word).first()
-
-
-
-    # @classmethod
-    # def return_all(cls):
-    #     def to_json(x):
-    #         return {
-    #             'id': x.id,
-    #             'word': x.word,
-    #             'audio_link': x.audio_link
-    #         }
-    #
-    #     return {'words': list(map(lambda x: to_json(x), db_session.query(WordModel).all()))}
 
     @classmethod
     def return_all(cls):
@@ -258,7 +200,6 @@ class WordTranscriptionModel(Base):
         db_session.delete(self)
         db_session.commit()
 
-
     @classmethod
     def find_by_word_id(cls, word_id):
         return db_session.query(WordTranscriptionModel).filter(WordTranscriptionModel.word_id == word_id).all()
@@ -277,3 +218,103 @@ class WordTranscriptionModel(Base):
             }
 
         return {'transcriptions': list(map(lambda x: to_json(x), db_session.query(WordTranscriptionModel).all()))}
+
+
+class EvaluationModel(Base):
+    __tablename__ = 'evaluations'
+    __table_args__ = (
+        PrimaryKeyConstraint('id', 'patient_id', 'evaluator_id'),
+    )
+
+    def __repr__(self):
+        return '{}'.format(self.id)
+
+    id = Column(Integer, primary_key=True)
+    date = Column(Date, nullable=False, default=get_date_br)
+    type = Column(String(1), nullable=False)
+
+    patient_id = Column(Integer, ForeignKey('patients.id'))
+    patient = relationship("PatientModel", back_populates="evaluation")
+
+    evaluator_id = Column(Integer, ForeignKey('users.id'))
+    evaluator = relationship("UserModel", back_populates="evaluation")
+
+    words = relationship("WordModel", secondary='word_evaluation')
+
+    def save_to_db(self):
+        db_session.add(self)
+        db_session.commit()
+
+    def update_to_db(self, type, patient_id):
+        db_session.query(EvaluationModel) \
+            .filter(EvaluationModel.id == self.id) \
+            .update({
+            'type': type,
+            'patient_id': patient_id
+        })
+        db_session.commit()
+
+    @classmethod
+    def find_all_user_evaluations(cls, user_id):
+        return db_session.query(EvaluationModel).filter(EvaluationModel.evaluator_id == user_id).all()
+
+    @classmethod
+    def find_by_id(cls, id):
+        return db_session.query(EvaluationModel).filter(EvaluationModel.id == id).first()
+
+
+class WordEvaluationModel(Base):
+    __tablename__ = 'word_evaluation'
+
+    evaluation_id = Column(Integer, ForeignKey('evaluations.id'), primary_key=True)
+    word_id = Column(Integer, ForeignKey('words.id'), primary_key=True)
+    transcription_target_id = Column(Integer, ForeignKey('transcription.id'))
+    transcription_eval = Column(String(255), nullable=True)
+    repetition = Column(Boolean, default=False)
+    audio_path = Column(String(255), nullable=False)
+    ml_eval = Column(Boolean)
+    api_eval = Column(Boolean)
+    therapist_eval = Column(Boolean)
+
+    evaluation = relationship("EvaluationModel", back_populates="words")
+    word = relationship("WordModel", back_populates="evaluations")
+
+    def save_to_db(self):
+        db_session.add(self)
+        db_session.commit()
+
+    def update_to_db(self, transcription_target_id, transcription, repetition, audio_path):
+        db_session.query(WordEvaluationModel) \
+            .filter(WordEvaluationModel.evaluation_id == self.evaluation_id) \
+            .filter(WordEvaluationModel.word_id == self.word_id) \
+            .update({
+                'transcription_target_id': transcription_target_id,
+                'transcription_eval': transcription,
+                'repetition': repetition,
+                'audio_path': audio_path,
+        })
+        db_session.commit()
+
+    def update_audio_evaluation(self, ml_eval=None, api_eval=None, therapist_eval=None):
+        evaluation = db_session.query(WordEvaluationModel) \
+            .filter(WordEvaluationModel.evaluation_id == self.evaluation_id) \
+            .filter(WordEvaluationModel.word_id == self.word_id)
+
+        if ml_eval:
+            evaluation.update({
+                'ml_eval': bool(ml_eval)
+            })
+        if api_eval:
+            evaluation.update({
+                'api_eval': bool(api_eval)
+            })
+        if therapist_eval:
+            evaluation.update({
+                'therapist_eval': bool(therapist_eval)
+            })
+
+        db_session.commit()
+
+    @classmethod
+    def find_evaluations_by_id(cls, evaluation_id):
+        return db_session.query(WordEvaluationModel).filter(WordEvaluationModel.evaluation_id == evaluation_id).all()

@@ -79,6 +79,8 @@ def create_app(script_info=None):
 
     # Patitent routes
     api.add_resource(PatientRegistration, '/api/patient')
+    api.add_resource(Patient, '/api/patient/<patient_id>')
+    api.add_resource(PatientAll, '/api/patient/all')
 
     # Word routes
     api.add_resource(WordRegistration, '/api/word')
@@ -88,6 +90,9 @@ def create_app(script_info=None):
     # WordTranscription routes
     api.add_resource(WordTranscription, '/api/transcription/<transcription_id>')
     api.add_resource(WordTranscriptionRegistration, '/api/transcription')
+
+    # Evaluation Routes
+    api.add_resource(EvaluationRegistration, '/api/evaluation')
 
     # Tasks routes
     api.add_resource(TaskStatus, '/api/task')

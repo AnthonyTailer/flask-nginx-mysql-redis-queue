@@ -3,6 +3,8 @@ import argparse
 import os
 import redis
 from datetime import datetime
+
+import werkzeug
 from flask import request, current_app
 from flask_restful import Resource, reqparse, fields, marshal, inputs
 from rq import Queue, Connection
@@ -241,7 +243,7 @@ class PatientRegistration(Resource):
 
         if PatientModel.find_by_name(data['name']):
             logger.warn('Paciente {} já existe'.format(data['name']))
-            return {'message': 'Usuário {} já existe'.format(data['name'])}, 422
+            return {'message': 'Paciente {} já existe'.format(data['name'])}, 422
 
         new_patient = PatientModel(
             name=data['name'],
@@ -268,6 +270,109 @@ class PatientRegistration(Resource):
             return {'message': 'Algo de errado não está certo, não foi possível criar o paciente'}, 500
 
 
+class Patient(Resource):
+    @jwt_required
+    def get(self, patient_id=None):
+        if not patient_id:
+            return {'message': 'Paciente não encontrado'}, 404
+
+        patient = PatientModel.find_by_id(patient_id)
+
+        if not patient:
+            return {'message': 'Paciente não encontrado'}, 404
+
+        resource_fields = {
+            'id': fields.Integer,
+            'name': fields.String,
+            'birth': fields.String,
+            'sex': fields.String,
+            'school': fields.String,
+            'school_type': fields.String,
+            'caregiver': fields.String,
+            'phone': fields.String,
+            'city': fields.String,
+            'state': fields.String,
+            'address': fields.String,
+        }
+        return marshal(patient, resource_fields, envelope='data')
+
+    @jwt_required
+    def put(self, patient_id):
+        if not patient_id:
+            return {'message': 'Paciente não encontrado'}, 404
+
+        patient = PatientModel.find_by_id(patient_id)
+
+        if not patient:
+            return {'message': 'Paciente não encontrado'}, 404
+
+        parser = reqparse.RequestParser(bundle_errors=True)
+        parser.add_argument('name', help='Nome completo é obrigatório', required=True)
+        parser.add_argument(
+            'birth',
+            help='Data de nascimento é obrigatória e deve estar no formato YYYY-mm-dd',
+            required=True,
+            type=inputs.date
+        )
+        parser.add_argument(
+            'sex',
+            choices=('M', 'F', ''),
+            help='Sexualidade deve ser um valor válido (M, F), ou não deve ser fornecida',
+            nullable=True,
+            required=False
+        )
+        parser.add_argument('school', help='Escola é obrigatória', required=True)
+        parser.add_argument(
+            'school_type',
+            choices=('PUB', 'PRI'),
+            help='Orgão escolar é obrigatório e deve ser uma string válida (PUB, PRI) ',
+            required=True
+        )
+        parser.add_argument('caregiver', nullable=True)
+        parser.add_argument('phone', nullable=True)
+        parser.add_argument('city', help="A Cidade é obrigatória", required=True)
+        parser.add_argument('state', help="O Estado é obrigatória", required=True)
+        parser.add_argument('address', nullable=True)
+
+        data = parser.parse_args()
+
+        try:
+            patient.update_to_db(
+                data['name'], data['birth'], data['sex'], data['school'], data['school_type'], data['caregiver'],
+                data['phone'], data['city'], data['state'], data['address']
+            )
+            logger.info('Paciente alterado com sucesso')
+            return {
+                       'message': 'Paciente {} alterado com sucesso'.format(data['name']),
+                       'info': 'api/pacient/{}'.format(patient.id)
+                   }, 200
+        except Exception as e:
+            logger.error('PUT PACIENT -> {}'.format(e))
+            return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
+
+
+class PatientAll(Resource):
+    @jwt_required
+    def get(self):
+        patients = PatientModel.return_all()
+
+        if not patients:
+            return {'message': 'Nenhum paciente não encontrado'}, 404
+
+        resource_fields = {
+            'id': fields.Integer,
+            'name': fields.String,
+            'birth': fields.String,
+            'sex': fields.String,
+            'school': fields.String,
+            'school_type': fields.String,
+            'caregiver': fields.String,
+            'phone': fields.String,
+            'city': fields.String,
+            'state': fields.String,
+            'address': fields.String,
+        }
+        return marshal(patients, resource_fields, envelope='data')
 
 
 # WordModel resources
@@ -483,6 +588,183 @@ class WordTranscriptionRegistration(Resource):
         except Exception as e:
             logger.error('Error {}'.format(e))
             return {'message': 'Algo de errado não está certo, não foi possível cadastrar sua Transcrição'}, 500
+
+
+# Evaluation Resources
+class EvaluationRegistration(Resource):
+    @jwt_required
+    def post(self):
+        parser = reqparse.RequestParser(bundle_errors=True)
+        parser.add_argument(
+            'type', choices=('R', 'N', 'F'),
+            help='Erro: tipo de avaliação é obrigatório e deve ser uma string válida (R,N,F)',
+            required=True
+        )
+        parser.add_argument('patient_id', help='Paciente é obrigatório', required=True, type=fields.Integer)
+        data = parser.parse_args()
+
+        patient = PatientModel.find_by_id(data['patient_id'])
+
+        if not patient:
+            logger.warn('Paciente inexistente')
+            return {'message': 'Paciente inexistente'}, 422
+
+        username = get_jwt_identity()
+
+        current_user = UserModel.find_by_username(username)
+
+        new_evaluation = EvaluationModel(
+            type=data['type'],
+            patient_id=patient.id,
+            evaluator_id=current_user.id,
+        )
+
+        try:
+            new_evaluation.save_to_db()
+
+            logger.info('Avaliação criada com sucesso')
+            return {
+                       'message': 'Avaliação criada com sucesso',
+                       'route': '/api/evaluation/{}'.format(new_evaluation.id)
+                   }, 201
+        except Exception as e:
+            logger.error('Error {}'.format(e))
+            return {
+                       'message': 'Algo de errado não está certo, não foi possível cadastrar sua Avaliação',
+                       'error': '{}'.format(e)
+                   }, 500
+
+
+class Evaluation(Resource):
+    @jwt_required
+    def get(self, evaluation_id=None):
+        if not evaluation_id:
+            return {'message': 'Avaliação não encontrada'}, 404
+
+        evaluation = EvaluationModel.find_by_id(evaluation_id)
+
+        if not evaluation:
+            return {'message': 'Avaliação não encontrada'}, 404
+
+        resource_fields = {
+            'id': fields.Integer,
+            'date': fields.String,
+            'type': fields.String,
+            'patient': fields.String,
+            'patient_id': fields.Integer,
+            'evaluator': fields.String,
+            'evaluator_id': fields.Integer
+        }
+        return marshal(evaluation, resource_fields, envelope='data')
+
+    @jwt_required
+    def put(self, evaluation_id):
+        if not evaluation_id:
+            return {'message': 'Avaliação não encontrada'}, 404
+
+        evaluation = EvaluationModel.find_by_id(evaluation_id)
+
+        if not evaluation:
+            return {'message': 'Avaliação não encontrada'}, 404
+
+        parser = reqparse.RequestParser(bundle_errors=True)
+        parser.add_argument(
+            'type', choices=('R', 'N', 'F'),
+            help='Erro: tipo de avaliação é obrigatório e deve ser uma string válida (R,N,F)',
+            required=True
+        )
+        parser.add_argument('patient_id', help='Paciente é obrigatório', required=True, type=fields.Integer)
+        data = parser.parse_args()
+
+        try:
+            evaluation.update_to_db(type=data['type'], patient_id=data['patient_id'])
+            logger.info('Avaliação alterada com sucesso')
+            return {
+                       'message': 'Avaliação alterada com sucesso',
+                       'info': 'api/pacient/{}'.format(evaluation.id)
+                   }, 200
+        except Exception as e:
+            logger.error('PUT EVALUATION -> {}'.format(e))
+            return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
+
+
+class WordEvaluationRegistration(Resource):
+    def post(self):
+        parser = reqparse.RequestParser(bundle_errors=True)
+        parser.add_argument(
+            'audio',
+            type=werkzeug.datastructures.FileStorage,
+            location='files',
+            required=True,
+            help="O audio é obrigatório"
+        )
+        parser.add_argument('evaluation_id', type=fields.Integer, required=True, help="A avaliação é obrigatória")
+        parser.add_argument('word', type=fields.Integer, required=True, help="A palavra é obrigatória")
+        parser.add_argument(
+            'transcription_target_id',
+            type=fields.Integer,
+            required=True,
+            help="A transcrição alvo é obrigatória"
+        )
+        parser.add_argument('repetition', type=fields.Boolean, help="Foi utilizado o método de repetição?")
+        parser.add_argument('transcription_eval', type=fields.Boolean, help="A transcrição identificada deve ser fornecida")
+
+        data = parser.parse_args()
+
+        evaluation = EvaluationModel.find_by_id(data['evaluation_id'])
+
+        if not evaluation:
+            return {'message': 'Avaliação não encontrada'}, 404
+
+        word = WordModel.find_by_word(data['word'])
+
+        if not word:
+            return {'message': 'Palavra não encontrada'}, 404
+
+        target_transc = WordTranscriptionModel.find_by_transcription_id(data['transcription_target_id'])
+
+        if not target_transc:
+            return {'message': 'Transcrição não encontrada'}, 404
+
+        if data['audio'] and allowed_file(data['audio'].filename):
+            filename = secure_filename(data['audio'].filename)
+
+            full_path = os.path.join(
+                current_app.config['UPLOAD_FOLDER'],
+                str(generate_hash_from_filename(filename) + '.' + filename.rsplit('.', 1)[1].lower())
+            )
+
+            try:
+                data['audio'].save(full_path)
+            except Exception as e:
+                logger.error('POST WORD_EVALUATION -> {}'.format(e))
+                return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
+            else:
+
+                new_word_eval = WordEvaluationModel(
+                    evaluation_id=evaluation.id,
+                    word_id=word.id,
+                    transcription_target_id=target_transc.id,
+                    transcription_eval=data['transcription_eval'],
+                    repetition=data['repetition'],
+                    audio_path=full_path
+                )
+
+                try:
+                    new_word_eval.save_to_db()
+                    logger.info('Avaliação do audio criada com sucesso') # TODO
+                    return {
+                               'message': 'Avaliação alterada com sucesso',
+                               'info': 'api/pacient/{}'.format(evaluation.id)
+                           }, 200
+                except Exception as e:
+                    logger.error('PUT EVALUATION -> {}'.format(e))
+                    return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
+        else:
+            return {
+                'message': 'Arquivo de audio não permitido'
+            }, 422
+
 
 
 # Tasks Resources
