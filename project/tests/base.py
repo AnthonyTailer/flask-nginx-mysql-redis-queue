@@ -3,9 +3,9 @@
 
 from flask_testing import TestCase
 
-from project.server import create_app
+from project.server.main import app
 
-app = create_app()
+app = app()
 
 
 class BaseTestCase(TestCase):

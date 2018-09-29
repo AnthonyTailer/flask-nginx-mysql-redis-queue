@@ -1,6 +1,6 @@
-# Docker + Flask + NGINX + Postgres + Redis Queue
+# Docker + Flask + NGINX + MYSQL + Redis Queue
 
-Example of how to handle background processes with Flask, Redis Queue, and Docker. Also with PostgreSQL integration and a NGINX server.  
+Example of how to handle background processes with Flask, Redis Queue, and Docker. Also with MYSQL integration and a NGINX server.  
  
 
 * This repository is a mix of:
@@ -19,15 +19,34 @@ $ docker-compose up -d db
 $ docker-compose run --rm web /bin/bash -c "cd /usr/src/app && python -c  'import database; database.init_db()'"
 ```
 
- Access db container
+OR use the Alembic Migration System
 ```sh
-$ docker-compose run --rm db psql -h db -U postgres
-``` 
+$ docker-compose run --rm web /bin/bash
+
+$ python manage.py db migrate
+
+$ python manage.py db upgrade
+
+# or to a fully upgrade
+
+$ python manage.py db stamp head
+```
 
 Spin up the others containers:
 ```sh
 $ docker-compose up -d
 ```
 
-* http://localhost:5001 to view the app
+Access db container
+```sh
+$ docker-compose run --rm db mysql -h db -U root
+``` 
+
+Watch the LOGS
+```sh
+$ docker-compose logs -f web
+$ tail -f project/server/logs/resources.log
+```
+
+* http://speech:5001 to view the app
 * http://localhost:9181 to view the RQ dashboard. 

@@ -1,9 +1,26 @@
+from flask import current_app
+
 from database import Base, db_session
-from sqlalchemy import Column, Integer, String, Date, Boolean, ForeignKey, PrimaryKeyConstraint, func
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Date, Boolean, ForeignKey, PrimaryKeyConstraint, func, create_engine
+from sqlalchemy.orm import relationship, backref, scoped_session, sessionmaker
 import enum
 from passlib.hash import pbkdf2_sha256 as sha256
+import speech_recognition as sr
 from project.server.main.helpers import get_date_br
+import redis
+import rq
+import os
+
+import logging
+
+logger = logging.getLogger('models_logger')
+
+formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(name)s:%(message)s')
+
+file_handler = logging.FileHandler('./project/server/logs/models.log')
+file_handler.setFormatter(formatter)
+
+logger.addHandler(file_handler)
 
 
 class EnumType(enum.Enum):
@@ -27,6 +44,7 @@ class UserModel(Base):
     type = Column(String(120), nullable=False)
 
     evaluation = relationship("EvaluationModel", back_populates="evaluator")
+    tasks = relationship('TaskModel', backref='user', lazy='dynamic')
 
     def save_to_db(self):
         db_session.add(self)
@@ -59,6 +77,45 @@ class UserModel(Base):
             .filter(UserModel.username == username) \
             .update({'password': cls.generate_hash(new_password)})
         db_session.commit()
+
+    def launch_task(self, name, description, *args):
+        logger.error("TASK -> {}".format(name))
+        logger.error("TASK -> {}".format(description))
+        # for i in args:
+        #     logger.error("TASK -> {}".format(i))
+        rq_job = current_app.task_queue.enqueue(name, *args)
+        task = TaskModel(id=rq_job.get_id(), name=name, description=description, user=self)
+        db_session.add(task)
+        db_session.commit()
+        return task
+
+    def get_tasks_in_progress(self):
+        return TaskModel.query.filter_by(user=self, complete=False).all()
+
+    def get_task_in_progress(self, name):
+        return TaskModel.query.filter_by(name=name, user=self,
+                                         complete=False).first()
+
+
+class TaskModel(Base):
+    __tablename__ = 'tasks'
+
+    id = Column(String(36), primary_key=True)
+    name = Column(String(128), index=True)
+    description = Column(String(128))
+    user_id = Column(Integer, ForeignKey('users.id'))
+    complete = Column(Boolean, default=False)
+
+    def get_rq_job(self):
+        try:
+            rq_job = rq.job.Job.fetch(self.id, connection=current_app.redis)
+        except (redis.exceptions.RedisError, rq.exceptions.NoSuchJobError):
+            return None
+        return rq_job
+
+    def get_progress(self):
+        job = self.get_rq_job()
+        return job.meta.get('progress', 0) if job is not None else 100
 
 
 class RevokedTokenModel(Base):
@@ -222,21 +279,18 @@ class WordTranscriptionModel(Base):
 
 class EvaluationModel(Base):
     __tablename__ = 'evaluations'
-    __table_args__ = (
-        PrimaryKeyConstraint('id', 'patient_id', 'evaluator_id'),
-    )
 
     def __repr__(self):
         return '{}'.format(self.id)
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(Date, nullable=False, default=get_date_br)
     type = Column(String(1), nullable=False)
 
-    patient_id = Column(Integer, ForeignKey('patients.id'))
+    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
     patient = relationship("PatientModel", back_populates="evaluation")
 
-    evaluator_id = Column(Integer, ForeignKey('users.id'))
+    evaluator_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     evaluator = relationship("UserModel", back_populates="evaluation")
 
     words = relationship("WordModel", secondary='word_evaluation')
@@ -268,6 +322,7 @@ class WordEvaluationModel(Base):
 
     evaluation_id = Column(Integer, ForeignKey('evaluations.id'), primary_key=True)
     word_id = Column(Integer, ForeignKey('words.id'), primary_key=True)
+
     transcription_target_id = Column(Integer, ForeignKey('transcription.id'))
     transcription_eval = Column(String(255), nullable=True)
     repetition = Column(Boolean, default=False)
@@ -276,8 +331,8 @@ class WordEvaluationModel(Base):
     api_eval = Column(Boolean)
     therapist_eval = Column(Boolean)
 
-    evaluation = relationship("EvaluationModel", back_populates="words")
-    word = relationship("WordModel", back_populates="evaluations")
+    evaluation = relationship("EvaluationModel", backref=backref("word_assoc"))
+    word = relationship("WordModel", backref=backref("evaluation_assoc"))
 
     def save_to_db(self):
         db_session.add(self)
@@ -288,32 +343,72 @@ class WordEvaluationModel(Base):
             .filter(WordEvaluationModel.evaluation_id == self.evaluation_id) \
             .filter(WordEvaluationModel.word_id == self.word_id) \
             .update({
-                'transcription_target_id': transcription_target_id,
-                'transcription_eval': transcription,
-                'repetition': repetition,
-                'audio_path': audio_path,
+            'transcription_target_id': transcription_target_id,
+            'transcription_eval': transcription,
+            'repetition': repetition,
+            'audio_path': audio_path,
         })
         db_session.commit()
 
-    def update_audio_evaluation(self, ml_eval=None, api_eval=None, therapist_eval=None):
-        evaluation = db_session.query(WordEvaluationModel) \
-            .filter(WordEvaluationModel.evaluation_id == self.evaluation_id) \
-            .filter(WordEvaluationModel.word_id == self.word_id)
+        # if ml_eval:
+        #     db_session.execute(
+        #         "UPDATE word_evaluation SET ml_eval=:new_value WHERE word_id=:param1 AND evaluation_id=:param2",
+        #         {"param1": evaluation_id, "param2": word_id, "new_value": bool(ml_eval)}
+        #     )
 
-        if ml_eval:
-            evaluation.update({
-                'ml_eval': bool(ml_eval)
-            })
-        if api_eval:
-            evaluation.update({
-                'api_eval': bool(api_eval)
-            })
-        if therapist_eval:
-            evaluation.update({
-                'therapist_eval': bool(therapist_eval)
-            })
+    def google_transcribe_audio(self, file):
+        user = os.environ['MYSQL_USER']
+        pwd = os.environ['MYSQL_ROOT_PASSWORD']
+        db = os.environ['DB_NAME']
+        host = os.environ['MYSQL_HOST']
+        port = os.environ['DB_PORT']
 
-        db_session.commit()
+        db_uri = 'mysql://%s:%s@%s:%s/%s?charset=utf8mb4' % (user, pwd, host, port, db)
+
+        engine = create_engine(db_uri, echo=True)
+
+        db_session = scoped_session(sessionmaker(autocommit=False,
+                                                 autoflush=False,
+                                                 bind=engine))
+        session = db_session()
+
+        r = sr.Recognizer()
+        audioFile = sr.AudioFile(file)
+        with audioFile as source:
+            try:
+                evaluation = session.query(WordEvaluationModel) \
+                    .filter(WordEvaluationModel.evaluation_id == self.evaluation_id) \
+                    .filter(WordEvaluationModel.word_id == self.word_id)
+            except Exception as e:
+                logger.error("GOOGLE API -> {}".format(e))
+            else:
+                try:
+                    logger.info("GOOGLE API -> Transcribing audio")
+                    r.adjust_for_ambient_noise(source, duration=0.5)
+                    audio = r.record(source)
+                    result = r.recognize_google(audio, language='pt-BR')
+
+                    evaluation.update({
+                        'api_eval': bool(result)
+                    })
+                    session.commit()
+                    return result
+
+                except sr.UnknownValueError as e:
+                    logger.error("GOOGLE API -> {}".format(e))
+                    evaluation.update({
+                        'api_eval': bool(False)
+                    })
+                    session.commit()
+                    return False
+
+                except sr.RequestError as e:
+                    logger.error("GOOGLE API -> {}".format(e))
+                    evaluation.update({
+                        'api_eval': bool(False)
+                    })
+                    session.commit()
+                    return False
 
     @classmethod
     def find_evaluations_by_id(cls, evaluation_id):

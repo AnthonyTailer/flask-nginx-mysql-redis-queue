@@ -8,7 +8,7 @@ class BaseConfig(object):
     """Base configuration."""
     WTF_CSRF_ENABLED = True
     REDIS_URL = 'redis://redis:6379/0'
-    QUEUES = ['default']
+    QUEUES = ['high', 'default', 'low']
     UPLOAD_FOLDER = './project/server/audios'
     ALLOWED_EXTENSIONS = {'wav'}
     SQLALCHEMY_TRACK_MODIFICATIONS = False

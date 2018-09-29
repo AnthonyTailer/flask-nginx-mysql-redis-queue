@@ -28,6 +28,7 @@ services:
       - .:/usr/src/app
     environment:
       - FLASK_DEBUG=1
+      - FLASK_APP=manage.py
       - APP_SETTINGS=project.server.config.DevelopmentConfig
     networks:
       - db_nw
@@ -44,6 +45,7 @@ services:
     volumes:
       - .:/usr/src/app
     environment:
+      - FLASK_APP=manage.py
       - APP_SETTINGS=project.server.config.DevelopmentConfig
     depends_on:
       - redis

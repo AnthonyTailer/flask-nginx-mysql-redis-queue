@@ -1,22 +1,23 @@
 # -*- coding: utf-8 -*-
+from __future__ import absolute_import
 import argparse
 import os
 import redis
 from datetime import datetime
 
+from flask import current_app
+
 import werkzeug
-from flask import request, current_app
 from flask_restful import Resource, reqparse, fields, marshal, inputs
 from rq import Queue, Connection
 from werkzeug.utils import secure_filename
-from project.server.main.tasks import google_transcribe_audio
 from project.server.main.helpers import generate_hash_from_filename, allowed_file
 from flask_jwt_extended import (create_access_token, jwt_required, get_raw_jwt, get_jwt_identity)
-from project.server.main.models import *
+
 
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('resources_logger')
 
 formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(name)s:%(message)s')
 
@@ -600,7 +601,7 @@ class EvaluationRegistration(Resource):
             help='Erro: tipo de avaliação é obrigatório e deve ser uma string válida (R,N,F)',
             required=True
         )
-        parser.add_argument('patient_id', help='Paciente é obrigatório', required=True, type=fields.Integer)
+        parser.add_argument('patient_id', help='Paciente é obrigatório', required=True)
         data = parser.parse_args()
 
         patient = PatientModel.find_by_id(data['patient_id'])
@@ -689,6 +690,7 @@ class Evaluation(Resource):
 
 
 class WordEvaluationRegistration(Resource):
+    @jwt_required
     def post(self):
         parser = reqparse.RequestParser(bundle_errors=True)
         parser.add_argument(
@@ -698,16 +700,15 @@ class WordEvaluationRegistration(Resource):
             required=True,
             help="O audio é obrigatório"
         )
-        parser.add_argument('evaluation_id', type=fields.Integer, required=True, help="A avaliação é obrigatória")
-        parser.add_argument('word', type=fields.Integer, required=True, help="A palavra é obrigatória")
+        parser.add_argument('evaluation_id', required=True, help="A avaliação é obrigatória")
+        parser.add_argument('word', required=True, help="A palavra é obrigatória")
         parser.add_argument(
             'transcription_target_id',
-            type=fields.Integer,
             required=True,
             help="A transcrição alvo é obrigatória"
         )
         parser.add_argument('repetition', type=fields.Boolean, help="Foi utilizado o método de repetição?")
-        parser.add_argument('transcription_eval', type=fields.Boolean, help="A transcrição identificada deve ser fornecida")
+        parser.add_argument('transcription_eval', help="A transcrição identificada deve ser fornecida")
 
         data = parser.parse_args()
 
@@ -724,7 +725,7 @@ class WordEvaluationRegistration(Resource):
         target_transc = WordTranscriptionModel.find_by_transcription_id(data['transcription_target_id'])
 
         if not target_transc:
-            return {'message': 'Transcrição não encontrada'}, 404
+            return {'message': 'Transcrição alvo não encontrada'}, 404
 
         if data['audio'] and allowed_file(data['audio'].filename):
             filename = secure_filename(data['audio'].filename)
@@ -737,7 +738,7 @@ class WordEvaluationRegistration(Resource):
             try:
                 data['audio'].save(full_path)
             except Exception as e:
-                logger.error('POST WORD_EVALUATION -> {}'.format(e))
+                logger.error('POST WORD_EVALUATION  SAVE AUDIO -> {}'.format(e))
                 return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
             else:
 
@@ -751,30 +752,49 @@ class WordEvaluationRegistration(Resource):
                 )
 
                 try:
-                    new_word_eval.save_to_db()
-                    logger.info('Avaliação do audio criada com sucesso') # TODO
+                    with Connection(redis.from_url(current_app.config['REDIS_URL'])):
+                        q = Queue()
+
+                        username = get_jwt_identity()
+                        current_user = UserModel.find_by_username(username)
+
+                        new_word_eval.save_to_db()
+
+                        # logger.info('Avaliação do audio criada com sucesso')
+                        # task1 = q.enqueue(new_word_eval.google_transcribe_audio, full_path)
+                        #  GOOGLE API AUDIO EVALUATION
+
+                        # ML AUDIO EVALUATION
+                        task2 = q.enqueue(ml_transcribe_audio, new_word_eval.evaluation_id, new_word_eval.word_id,
+                                          data['word'], full_path)
+                        # job2 = task2.get_rq_job()
+                        # task2 = q.enqueue(current_app, ml_transcribe_audio, new_word_eval.evaluation_id, new_word_eval.word_id,
+                        #                   data['word'], full_path)
                     return {
-                               'message': 'Avaliação alterada com sucesso',
-                               'info': 'api/pacient/{}'.format(evaluation.id)
-                           }, 200
+                               'message': 'Avaliação do audio criada com sucesso',
+                               'data': {
+                                   # 'task_api_id': task1.get_id(),
+                                   # 'url_api': 'api/task/' + str(task1.get_id()),
+                                   'task_ml_id': task2.get_id(),
+                                   'url_ml': 'api/task/' + str(task2.get_id()),
+                               }
+                           }, 201
                 except Exception as e:
-                    logger.error('PUT EVALUATION -> {}'.format(e))
+                    logger.error('POST WORD_EVALUATION -> {}'.format(e))
                     return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
         else:
             return {
-                'message': 'Arquivo de audio não permitido'
-            }, 422
-
+                       'message': 'Arquivo de audio não permitido'
+                   }, 422
 
 
 # Tasks Resources
 class TaskStatus(Resource):
 
     @jwt_required
-    def get(self):
-        with Connection(redis.from_url(current_app.config['REDIS_URL'])):
-            q = Queue()
-            task = q.fetch_job(self.task_id)
+    def get(self, task_id):
+
+        task = current_app.task_queue.fetch_job(task_id)
         if task:
             response_object = {
                 'status': 'success',
@@ -789,46 +809,45 @@ class TaskStatus(Resource):
         return response_object
 
 
-# Audio tasks
-class AudioTranscription(Resource):
-    def post(self):
-        if request.method == 'POST':
-
-            if 'file' not in request.files:
-                return {
-                           'error': 'No file was send'
-                       }, 400
-
-            print(request.files)
-            audio = request.files['file']
-
-            if audio.filename == '':
-                return {
-                           'error': 'No selected file'
-                       }, 400
-
-            if audio and allowed_file(audio.filename):
-                filename = secure_filename(audio.filename)
-
-                full_path = os.path.join(current_app.config['UPLOAD_FOLDER'], str(
-                    generate_hash_from_filename(filename) + '.' + filename.rsplit('.', 1)[1].lower())
-                                         )
-
-                audio.save(full_path)
-
-                with Connection(redis.from_url(current_app.config['REDIS_URL'])):
-                    q = Queue()
-                    task = q.enqueue(google_transcribe_audio, full_path)
-
-                response_object = {
-                    'status': 'success',
-                    'data': {
-                        'task_id': task.get_id(),
-                        'url': 'api/task/' + str(task.get_id())
-                    }
-                }
-
-                return response_object, 202
+# class AudioTranscription(Resource):
+#     def post(self):
+#         if request.method == 'POST':
+#
+#             if 'file' not in request.files:
+#                 return {
+#                            'error': 'No file was send'
+#                        }, 400
+#
+#             print(request.files)
+#             audio = request.files['file']
+#
+#             if audio.filename == '':
+#                 return {
+#                            'error': 'No selected file'
+#                        }, 400
+#
+#             if audio and allowed_file(audio.filename):
+#                 filename = secure_filename(audio.filename)
+#
+#                 full_path = os.path.join(current_app.config['UPLOAD_FOLDER'], str(
+#                     generate_hash_from_filename(filename) + '.' + filename.rsplit('.', 1)[1].lower())
+#                                          )
+#
+#                 audio.save(full_path)
+#
+#                 with Connection(redis.from_url(current_app.config['REDIS_URL'])):
+#                     q = Queue()
+#                     task = q.enqueue(google_transcribe_audio, full_path)
+#
+#                 response_object = {
+#                     'status': 'success',
+#                     'data': {
+#                         'task_id': task.get_id(),
+#                         'url': 'api/task/' + str(task.get_id())
+#                     }
+#                 }
+#
+#                 return response_object, 202
 
 
 class SecretResource(Resource):
@@ -837,3 +856,8 @@ class SecretResource(Resource):
         return {
             'answer': 42
         }
+
+
+from .models import UserModel, TaskModel, EvaluationModel, PatientModel, WordTranscriptionModel, \
+    WordModel, WordEvaluationModel, RevokedTokenModel, EnumType
+from .tasks import ml_transcribe_audio

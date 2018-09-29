@@ -10,6 +10,13 @@ psycopg2==2.6.1
 mysqlclient
 passlib
 Werkzeug
+python-dotenv
 blinker
 redis==2.10.6
 rq==0.10.0
+scipy
+numpy
+matplotlib
+Pillow
+sklearn
+SpeechRecognition
