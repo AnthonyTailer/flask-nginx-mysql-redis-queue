@@ -23,13 +23,13 @@ services:
       - .env
     ports:
       - '5001:5000'
-    command: python manage.py run -h 0.0.0.0
+    command: flask run -h 0.0.0.0
     volumes:
       - .:/usr/src/app
     environment:
       - FLASK_DEBUG=1
       - FLASK_APP=manage.py
-      - APP_SETTINGS=project.server.config.DevelopmentConfig
+      - APP_SETTINGS=app.server.config.DevelopmentConfig
     networks:
       - db_nw
       - web_nw
@@ -39,14 +39,14 @@ services:
 
   worker:
     image: web
-    command: python manage.py run_worker
+    command: flask run_worker
     env_file:
       - .env
     volumes:
       - .:/usr/src/app
     environment:
       - FLASK_APP=manage.py
-      - APP_SETTINGS=project.server.config.DevelopmentConfig
+      - APP_SETTINGS=app.server.config.DevelopmentConfig
     depends_on:
       - redis
     networks:
@@ -58,7 +58,7 @@ services:
       - web_nw
 
   dashboard:
-    build: ./project/dashboard
+    build: app/dashboard
     image: dashboard
     container_name: dashboard
     ports:
@@ -71,7 +71,7 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./project/conf.d:/etc/nginx/conf.d
+      - ./app/conf.d:/etc/nginx/conf.d
     networks:
       - web_nw
     depends_on:
