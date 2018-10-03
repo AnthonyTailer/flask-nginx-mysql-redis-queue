@@ -1,3 +1,4 @@
+from app import db
 from sqlalchemy import func
 from sqlalchemy.orm import relationship, backref
 import enum
@@ -374,6 +375,3 @@ class WordEvaluation(db.Model):
     @classmethod
     def find_evaluations_by_id(cls, evaluation_id):
         return WordEvaluation.query.filter_by(evaluation_id=evaluation_id).all()
-
-
-from app import db
