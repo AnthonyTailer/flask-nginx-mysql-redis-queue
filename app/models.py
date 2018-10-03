@@ -6,7 +6,6 @@ from app.helpers import get_date_br
 import redis
 import rq
 from flask import current_app
-from app import db
 
 class EnumType(enum.Enum):
     anonymous = 1,
@@ -375,3 +374,6 @@ class WordEvaluation(db.Model):
     @classmethod
     def find_evaluations_by_id(cls, evaluation_id):
         return WordEvaluation.query.filter_by(evaluation_id=evaluation_id).all()
+
+
+from app import db
