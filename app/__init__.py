@@ -22,7 +22,7 @@ def create_app():
 
     db.init_app(app)
     migrate.init_app(app, db)
-    api = Api(app)
+    # api = Api(app)
 
     # set JWT Authentication
     app.config['JWT_SECRET_KEY'] = helpers.generate_hash_from_filename('jwt-secret-string')
@@ -48,45 +48,45 @@ def create_app():
     app.logger.setLevel(logging.INFO)
     app.logger.info('Speech API startup')
 
-    api.add_resource(resources.UserRegistration, '/api/registration')
-
-    api.add_resource(resources.UserLogin, '/api/login')
-
-    api.add_resource(resources.UserLogoutAccess, '/api/logout')
-    api.add_resource(resources.UserResource, '/api/user', endpoint='user')  # GET and PUT
-    api.add_resource(resources.UserResetPassword, '/api/user/change/password')
-
-    # Patitent routes
-    api.add_resource(resources.PatientRegistration, '/api/patient')
-    api.add_resource(resources.PatientResource, '/api/patient/<patient_id>')
-    api.add_resource(resources.PatientAll, '/api/patient/all')
-
-    # Word routes
-    api.add_resource(resources.WordRegistration, '/api/word')
-    api.add_resource(resources.WordResource, '/api/word/<word>')  # PUT, DELETE and GET word and yours transcriptions
-    api.add_resource(resources.WordAll, '/api/word/all')
-
-    # WordTranscription routes
-    api.add_resource(resources.WordTranscriptionResource, '/api/transcription/<transcription_id>')
-    api.add_resource(resources.WordTranscriptionRegistration, '/api/transcription')
-
-    # Evaluation Routes
-    api.add_resource(resources.EvaluationResource, '/api/evaluation/<evaluation_id>')
-    api.add_resource(resources.EvaluationRegistration, '/api/evaluation')
-
-    # WordEvaluation
-    api.add_resource(resources.WordEvaluationRegistration, '/api/evaluation/word')
-
-    # Tasks routes
-    api.add_resource(resources.TaskStatus, '/api/task/<task_id>')
-
-    api.add_resource(resources.SecretResource, '/api/secret')
-
-    @api.representation('application/json')
-    def output_json(data, code, headers=None):
-        resp = make_response(json.dumps(data), code)
-        resp.headers.extend(headers or {})
-        return resp
+    # api.add_resource(resources.UserRegistration, '/api/registration')
+    #
+    # api.add_resource(resources.UserLogin, '/api/login')
+    #
+    # api.add_resource(resources.UserLogoutAccess, '/api/logout')
+    # api.add_resource(resources.UserResource, '/api/user', endpoint='user')  # GET and PUT
+    # api.add_resource(resources.UserResetPassword, '/api/user/change/password')
+    #
+    # # Patitent routes
+    # api.add_resource(resources.PatientRegistration, '/api/patient')
+    # api.add_resource(resources.PatientResource, '/api/patient/<patient_id>')
+    # api.add_resource(resources.PatientAll, '/api/patient/all')
+    #
+    # # Word routes
+    # api.add_resource(resources.WordRegistration, '/api/word')
+    # api.add_resource(resources.WordResource, '/api/word/<word>')  # PUT, DELETE and GET word and yours transcriptions
+    # api.add_resource(resources.WordAll, '/api/word/all')
+    #
+    # # WordTranscription routes
+    # api.add_resource(resources.WordTranscriptionResource, '/api/transcription/<transcription_id>')
+    # api.add_resource(resources.WordTranscriptionRegistration, '/api/transcription')
+    #
+    # # Evaluation Routes
+    # api.add_resource(resources.EvaluationResource, '/api/evaluation/<evaluation_id>')
+    # api.add_resource(resources.EvaluationRegistration, '/api/evaluation')
+    #
+    # # WordEvaluation
+    # api.add_resource(resources.WordEvaluationRegistration, '/api/evaluation/word')
+    #
+    # # Tasks routes
+    # api.add_resource(resources.TaskStatus, '/api/task/<task_id>')
+    #
+    # api.add_resource(resources.SecretResource, '/api/secret')
+    #
+    # @api.representation('application/json')
+    # def output_json(data, code, headers=None):
+    #     resp = make_response(json.dumps(data), code)
+    #     resp.headers.extend(headers or {})
+    #     return resp
 
     return app
 
