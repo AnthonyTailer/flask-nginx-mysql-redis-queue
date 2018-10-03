@@ -11,3 +11,4 @@ env.sh
 migrations
 .idea/
 dbdata/
+.vagrant/
