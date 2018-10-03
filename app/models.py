@@ -1,15 +1,12 @@
 from sqlalchemy import func
-
-from flask import current_app
-from app import db
-
 from sqlalchemy.orm import relationship, backref
 import enum
 from passlib.hash import pbkdf2_sha256 as sha256
 from app.helpers import get_date_br
 import redis
 import rq
-
+from flask import current_app
+from app import db
 
 class EnumType(enum.Enum):
     anonymous = 1,
