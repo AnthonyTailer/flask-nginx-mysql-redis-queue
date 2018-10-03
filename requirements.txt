@@ -3,7 +3,7 @@ Flask-Script==2.0.6
 Flask-Testing==0.6.2
 flask-restful
 flask-jwt-extended
-Flask-SQLAlchemy==2.1
+Flask-SQLAlchemy
 flask-migrate
 mysqlclient
 passlib

@@ -15,6 +15,15 @@ class BaseConfig(object):
     UPLOAD_FOLDER = './app/audios'
     ALLOWED_EXTENSIONS = {'wav'}
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    user = os.environ['MYSQL_USER']
+    pwd = os.environ['MYSQL_ROOT_PASSWORD']
+    db = os.environ['DB_NAME']
+    host = os.environ['MYSQL_HOST']
+    port = os.environ['DB_PORT']
+    db_uri = 'mysql://%s:%s@%s:%s/%s?charset=utf8mb4' % (user, pwd, host, port, db)
+    os.environ.setdefault('DATABASE_URL', db_uri)
+
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
                               'sqlite:///' + os.path.join(basedir, 'app.db')
     FLASK_SKIP_DOTENV = 1

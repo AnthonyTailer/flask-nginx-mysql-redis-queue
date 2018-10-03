@@ -9,7 +9,7 @@ from flask_migrate import Migrate
 import logging
 from logging.handlers import RotatingFileHandler
 import os
-from app import helpers
+from app import helpers, resources
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -94,4 +94,4 @@ def create_app():
     return app
 
 
-from app import models, resources
+from app import models
