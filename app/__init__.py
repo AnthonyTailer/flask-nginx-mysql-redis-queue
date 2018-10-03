@@ -22,8 +22,7 @@ def create_app():
 
     db.init_app(app)
     migrate.init_app(app, db)
-    api_bp = Blueprint('api', __name__)
-    api = Api(api_bp)
+    api = Api(app)
 
     # set JWT Authentication
     app.config['JWT_SECRET_KEY'] = helpers.generate_hash_from_filename('jwt-secret-string')
@@ -88,8 +87,6 @@ def create_app():
         resp = make_response(json.dumps(data), code)
         resp.headers.extend(headers or {})
         return resp
-
-    app.register_blueprint(api_bp)
 
     return app
 
