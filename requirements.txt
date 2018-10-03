@@ -5,7 +5,6 @@ flask-restful
 flask-jwt-extended
 Flask-SQLAlchemy
 flask-migrate
-mysqlclient
 passlib
 Werkzeug
 python-dotenv
