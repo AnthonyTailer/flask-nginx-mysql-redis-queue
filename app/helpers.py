@@ -6,9 +6,6 @@ import matplotlib.pyplot as plt
 from scipy.io import wavfile
 import os
 from PIL import Image
-import logging
-
-logger = logging.getLogger('resources_logger')
 
 
 def generate_hash_from_filename(fname):
@@ -168,38 +165,39 @@ def write_scikit(hist, filename):
 # parameters wd = word(string), w = audio path
 # create the files wd+'.png' & wd+'_gray.png' in path ./../spectrograms/
 def generate_spectrogram(wd, w):
-    logger.info("ML API -> Generating spectrogram...")
+    # logger.info("ML API -> Generating spectrogram...")
     rate, data = get_wav_info(w)
     nfft = 256  # Length of the windowing segments
     fs = 256  # Sampling frequency
     pxx, freqs, bins, im = plt.specgram(data, nfft, fs)
     plt.axis('off')
 
-    wd_path = './project/server/spectrograms/' + wd + '/'
-    wd_img_path = './project/server/spectrograms/' + wd + '.png'
+    wd_path = './app/spectrograms/' + wd + '/'
+    wd_img_path = './app/spectrograms/' + wd + '.png'
 
     if not os.path.exists(wd_path):
-        logger.info('ML API -> Creating directory structure')
+        # logger.info('ML API -> Creating directory structure')
         os.makedirs(wd_path)
 
     try:
-        logger.info('ML API -> Saving spectrogram')
+        # logger.info('ML API -> Saving spectrogram')
         plt.savefig(wd_img_path, dpi=100, frameon='false', aspect='normal',
                     bbox_inches='tight', pad_inches=0)
     except Exception as e:
-        logger.error("ML API -> {}".format(e))
+        # logger.error("ML API -> {}".format(e))
+        print(e)
     else:
-        logger.info('ML API -> Converting to b&w')
+        # logger.info('ML API -> Converting to b&w')
         img = Image.open(wd_img_path).convert('LA')
-        img.save('./project/server/spectrograms/' + wd + '_gray.png')
+        img.save('./app/spectrograms/' + wd + '_gray.png')
 
 
 def generate_testing_file(wd):
-    logger.info('ML API -> Loading b&w')
-    img = Image.open('./project/server/spectrograms/' + wd + '_gray.png')
+    # logger.info('ML API -> Loading b&w')
+    img = Image.open('./app/spectrograms/' + wd + '_gray.png')
     pix = img.load()
 
-    filename = './project/server/main/testing.scikit'
-    logger.info('ML API -> Writing lbp')
+    filename = './app/testing.scikit'
+    # logger.info('ML API -> Writing lbp')
     hist = lbp(img, True)  # generate the lbp histogram
     write_scikit(hist, filename)

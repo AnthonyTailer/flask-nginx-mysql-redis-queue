@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import
-import argparse
 import os
 import redis
 from datetime import datetime
@@ -9,23 +7,15 @@ from flask import current_app
 
 import werkzeug
 from flask_restful import Resource, reqparse, fields, marshal, inputs
+from flask.views import MethodView
 from rq import Queue, Connection
 from werkzeug.utils import secure_filename
-from project.server.main.helpers import generate_hash_from_filename, allowed_file
+from app.helpers import generate_hash_from_filename, allowed_file
 from flask_jwt_extended import (create_access_token, jwt_required, get_raw_jwt, get_jwt_identity)
 
-
-import logging
-
-logger = logging.getLogger('resources_logger')
-
-formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(name)s:%(message)s')
-
-file_handler = logging.FileHandler('./project/server/logs/resources.log')
-file_handler.setFormatter(formatter)
-
-logger.addHandler(file_handler)
-
+from app.models import User, Evaluation, Patient, WordTranscription, \
+    Word, WordEvaluation, RevokedToken, EnumType
+from app.tasks import ml_transcribe_audio
 
 class ValidationsHelper:
     @staticmethod
@@ -34,7 +24,7 @@ class ValidationsHelper:
             return datetime.strptime(s, "%Y-%m-%d")
         except ValueError as e:
             msg = "A data fornecida é inválida: '{0}'.".format(s)
-            logger.error('{} {}'.format(msg, e))
+            current_app.logger.error('{} {}'.format(msg, e))
             return msg
 
 
@@ -53,8 +43,8 @@ class UserRegistration(Resource):
     def post(self):
         data = self.parser.parse_args()
 
-        if UserModel.find_by_username(data['username']):
-            logger.warn('Usuário {} já existe'.format(data['username']))
+        if User.find_by_username(data['username']):
+            current_app.logger.warn('Usuário {} já existe'.format(data['username']))
             return {'message': 'Usuário {} já existe'.format(data['username'])}, 422
 
         try:
@@ -63,26 +53,26 @@ class UserRegistration(Resource):
             else:
                 user_type = EnumType.anonymous.__str__()
         except (Exception, KeyError, LookupError) as e:
-            logger.error('Tipo de usuário inválido ERROR: {}'.format(e))
+            current_app.logger.error('Tipo de usuário inválido ERROR: {}'.format(e))
             return {'message': 'Tipo de usuário inválido'}
 
-        new_user = UserModel(
+        new_user = User(
             username=data['username'],
             fullname=data['fullname'],
-            password=UserModel.generate_hash(data['password']),
+            password=User.generate_hash(data['password']),
             type=user_type
         )
         try:
             new_user.save_to_db()
             access_token = create_access_token(identity=data['username'], expires_delta=False)
-            logger.info('Usuário {} criado com sucesso'.format(data['username']))
+            current_app.logger.info('Usuário {} criado com sucesso'.format(data['username']))
             return {
                        'message': 'Usuário {} criado com sucesso'.format(data['username']),
                        'access_token': access_token,
                        'login': 'api/login'
                    }, 201
         except Exception as e:
-            logger.error('Error {}'.format(e))
+            current_app.logger.error('Error {}'.format(e))
             return {'message': 'Algo de errado não está certo'}, 500
 
 
@@ -94,12 +84,12 @@ class UserLogin(Resource):
     def post(self):
 
         data = self.parser.parse_args()
-        current_user = UserModel.find_by_username(data['username'])
+        current_user = User.find_by_username(data['username'])
 
         if not current_user:
             return {'message': 'Usuário {} não existe'.format(data['username'])}
 
-        if UserModel.verify_hash(data['password'], current_user.password):
+        if User.verify_hash(data['password'], current_user.password):
             access_token = create_access_token(identity=data['username'], expires_delta=False)
             return {
                 'message': 'Logado como {}'.format(current_user.username),
@@ -119,17 +109,17 @@ class UserResetPassword(Resource):
     def post(self):
         username = get_jwt_identity()
         data = self.parser.parse_args()
-        current_user = UserModel.find_by_username(username)
+        current_user = User.find_by_username(username)
 
         if not current_user:
             return {'message': 'Usuário inexistente'.format(username)}
-        if UserModel.verify_hash(data['current_password'], current_user.password):
+        if User.verify_hash(data['current_password'], current_user.password):
             try:
-                UserModel.change_password(username, data['new_password'])
-                logger.info('Senha alterada com sucesso')
+                User.change_password(username, data['new_password'])
+                current_app.logger.info('Senha alterada com sucesso')
                 try:
                     jti = get_raw_jwt()['jti']
-                    revoked_token = RevokedTokenModel(jti=jti)
+                    revoked_token = RevokedToken(jti=jti)
                     revoked_token.add()
                     return {
                                'message': 'Senha alterada com sucesso',
@@ -137,7 +127,7 @@ class UserResetPassword(Resource):
                 except Exception as e:
                     return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
             except Exception as e:
-                logger.error('Error {}'.format(e))
+                current_app.logger.error('Error {}'.format(e))
                 return {'message': 'Algo de errado não está certo'}, 500
         return {'message': 'A senha atual não está correta'}, 422
 
@@ -148,14 +138,14 @@ class UserLogoutAccess(Resource):
     def post(self):
         jti = get_raw_jwt()['jti']
         try:
-            revoked_token = RevokedTokenModel(jti=jti)
+            revoked_token = RevokedToken(jti=jti)
             revoked_token.add()
             return {'message': 'O seu token de acesso foi revogado com sucesso'}
         except Exception as e:
             return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
 
 
-class User(Resource):
+class UserResource(Resource):
 
     @jwt_required
     def get(self):
@@ -166,7 +156,7 @@ class User(Resource):
             'fullname': fields.String,
             'type': fields.String
         }
-        return marshal(UserModel.find_by_username(current_user), resource_fields, envelope='data')
+        return marshal(User.find_by_username(current_user), resource_fields, envelope='data')
 
     @jwt_required
     def put(self):
@@ -180,24 +170,24 @@ class User(Resource):
             required=True
         )
         data = parser.parse_args()
-        current_user = UserModel.find_by_username(username)
-        new_user = UserModel.find_by_username(data['username'])
+        current_user = User.find_by_username(username)
+        new_user = User.find_by_username(data['username'])
 
         if not current_user:
             return {'message': 'Usuário inexistente'.format(username)}
 
         if new_user:
             if (new_user.username != current_user.username) and (new_user.id != current_user.id):
-                logger.warn('Usuário {} já existe'.format(data['username']))
+                current_app.logger.warn('Usuário {} já existe'.format(data['username']))
                 return {'message': 'Usuário {} já existe'.format(data['username'])}, 422
 
         try:
             current_user.update_to_db(data['username'], data['fullname'], data['type'])
-            logger.info('Usuário alterada com sucesso')
+            current_app.logger.info('Usuário alterada com sucesso')
             try:
                 if data['username'].strip() != username.strip():
                     jti = get_raw_jwt()['jti']
-                    revoked_token = RevokedTokenModel(jti=jti)
+                    revoked_token = RevokedToken(jti=jti)
                     revoked_token.add()
                 return {
                            'message': 'Usuário alterada com sucesso',
@@ -242,11 +232,11 @@ class PatientRegistration(Resource):
 
         data = parser.parse_args()
 
-        if PatientModel.find_by_name(data['name']):
-            logger.warn('Paciente {} já existe'.format(data['name']))
+        if Patient.find_by_name(data['name']):
+            current_app.logger.warn('Paciente {} já existe'.format(data['name']))
             return {'message': 'Paciente {} já existe'.format(data['name'])}, 422
 
-        new_patient = PatientModel(
+        new_patient = Patient(
             name=data['name'],
             birth=data['birth'],
             sex=data['sex'],
@@ -261,23 +251,23 @@ class PatientRegistration(Resource):
 
         try:
             new_patient.save_to_db()
-            logger.info('Paciente {} criado com sucesso'.format(data['name']))
+            current_app.logger.info('Paciente {} criado com sucesso'.format(data['name']))
             return {
                        'message': 'Paciente {} criado com sucesso'.format(data['name']),
                        'info': 'api/pacient/{}'.format(new_patient.id)
                    }, 201
         except Exception as e:
-            logger.error('Error - PACIENT -> {}'.format(e))
+            current_app.logger.error('Error - PACIENT -> {}'.format(e))
             return {'message': 'Algo de errado não está certo, não foi possível criar o paciente'}, 500
 
 
-class Patient(Resource):
+class PatientResource(Resource):
     @jwt_required
     def get(self, patient_id=None):
         if not patient_id:
             return {'message': 'Paciente não encontrado'}, 404
 
-        patient = PatientModel.find_by_id(patient_id)
+        patient = Patient.find_by_id(patient_id)
 
         if not patient:
             return {'message': 'Paciente não encontrado'}, 404
@@ -302,7 +292,7 @@ class Patient(Resource):
         if not patient_id:
             return {'message': 'Paciente não encontrado'}, 404
 
-        patient = PatientModel.find_by_id(patient_id)
+        patient = Patient.find_by_id(patient_id)
 
         if not patient:
             return {'message': 'Paciente não encontrado'}, 404
@@ -342,20 +332,20 @@ class Patient(Resource):
                 data['name'], data['birth'], data['sex'], data['school'], data['school_type'], data['caregiver'],
                 data['phone'], data['city'], data['state'], data['address']
             )
-            logger.info('Paciente alterado com sucesso')
+            current_app.logger.info('Paciente alterado com sucesso')
             return {
                        'message': 'Paciente {} alterado com sucesso'.format(data['name']),
                        'info': 'api/pacient/{}'.format(patient.id)
                    }, 200
         except Exception as e:
-            logger.error('PUT PACIENT -> {}'.format(e))
+            current_app.logger.error('PUT PACIENT -> {}'.format(e))
             return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
 
 
 class PatientAll(Resource):
     @jwt_required
     def get(self):
-        patients = PatientModel.return_all()
+        patients = Patient.return_all()
 
         if not patients:
             return {'message': 'Nenhum paciente não encontrado'}, 404
@@ -377,7 +367,7 @@ class PatientAll(Resource):
 
 
 # WordModel resources
-class Word(Resource):
+class WordResource(Resource):
 
     @jwt_required
     def get(self, word=None):
@@ -391,11 +381,11 @@ class Word(Resource):
             'transcription': fields.List(fields.String)
         }
 
-        return marshal(WordModel.find_by_word(word), resource_fields, envelope='data')
+        return marshal(Word.find_by_word(word), resource_fields, envelope='data')
 
     @jwt_required
     def put(self, word=None):
-        current_word = WordModel.find_by_word(word)
+        current_word = Word.find_by_word(word)
 
         if not current_word:
             return {'message': 'Palavra não encontrada'}, 404
@@ -405,23 +395,23 @@ class Word(Resource):
         parser.add_argument('tip')
 
         data = parser.parse_args()
-        new_word = WordModel.find_by_word(data['word'])
+        new_word = Word.find_by_word(data['word'])
 
         if new_word:
             if (new_word.word != current_word.word) and (new_word.id != current_word.id):
-                logger.warn('Palavra {} já existe'.format(data['word']))
+                current_app.logger.warn('Palavra {} já existe'.format(data['word']))
                 return {'message': 'Palavra {} já existe'.format(data['word'])}
 
         try:
             current_word.update_to_db(word=data['word'], tip=data['tip'])
 
-            logger.info('Palavra {} atualizada com sucesso'.format(data['word']))
+            current_app.logger.info('Palavra {} atualizada com sucesso'.format(data['word']))
             return {
                        'message': 'Palavra {} atualizada com sucesso'.format(data['word']),
                        'route': '/api/word/{}'.format(current_word.word)
                    }, 201
         except Exception as e:
-            logger.error('Error {}'.format(e))
+            current_app.logger.error('Error {}'.format(e))
             return {'message': 'Algo de errado não está certo, não foi possível atualizar sua palavra'}, 500
 
     @jwt_required
@@ -430,13 +420,13 @@ class Word(Resource):
             return {'message': 'Palavra não encontrada'}, 404
 
         try:
-            WordModel.delete_by_word(word)
-            logger.info('Palavra {} deletada com sucesso'.format(word))
+            Word.delete_by_word(word)
+            current_app.logger.info('Palavra {} deletada com sucesso'.format(word))
             return {
                 'message': 'Palavra {} deletada com sucesso'.format(word),
             }
         except Exception as e:
-            logger.error('Error {}'.format(e))
+            current_app.logger.error('Error {}'.format(e))
             return {'message': 'Algo de errado não está certo, não foi possível deletar sua palavra'}, 500
 
 
@@ -450,7 +440,7 @@ class WordAll(Resource):
             'transcription': fields.List(fields.String)
         }
 
-        return marshal(WordModel.return_all(), resource_fields, envelope='data')
+        return marshal(Word.return_all(), resource_fields, envelope='data')
 
 
 class WordRegistration(Resource):
@@ -462,36 +452,36 @@ class WordRegistration(Resource):
 
         data = parser.parse_args()
 
-        if WordModel.find_by_word(data['word']):
-            logger.warn('Palavra {} já existe'.format(data['word']))
+        if Word.find_by_word(data['word']):
+            current_app.logger.warn('Palavra {} já existe'.format(data['word']))
             return {'message': 'Palavra {} já existe'.format(data['word'])}
 
-        new_word = WordModel(
+        new_word = Word(
             word=data['word'],
             tip=data['tip']
         )
         try:
             new_word.save_to_db()
 
-            logger.info('Palavra {} criada com sucesso'.format(data['word']))
+            current_app.logger.info('Palavra {} criada com sucesso'.format(data['word']))
             return {
                        'message': 'Palavra {} criada com sucesso'.format(data['word']),
                        'route': '/api/word/{}'.format(new_word.word)
                    }, 201
         except Exception as e:
-            logger.error('Error {}'.format(e))
+            current_app.logger.error('Error {}'.format(e))
             return {'message': 'Algo de errado não está certo, não foi possível cadastrar sua palavra'}, 500
 
 
 # WordTranscriptionModel resources
-class WordTranscription(Resource):
+class WordTranscriptionResource(Resource):
 
     @jwt_required
     def get(self, transcription_id=None):
         if not transcription_id:
             return {'message': 'Transcrição não encontrada'}
 
-        transc = WordTranscriptionModel.find_by_transcription_id(transcription_id)
+        transc = WordTranscription.find_by_transcription_id(transcription_id)
 
         if not transc:
             return {'message': 'Transcrição não encontrada'}, 404
@@ -502,7 +492,7 @@ class WordTranscription(Resource):
             'transcription': fields.String
         }
 
-        return marshal(WordTranscriptionModel.find_by_transcription_id(transcription_id), resource_fields,
+        return marshal(WordTranscription.find_by_transcription_id(transcription_id), resource_fields,
                        envelope='data')
 
     @jwt_required
@@ -510,7 +500,7 @@ class WordTranscription(Resource):
         if not transcription_id:
             return {'message': 'Transcrição não encontrada'}
 
-        transc = WordTranscriptionModel.find_by_transcription_id(transcription_id)
+        transc = WordTranscription.find_by_transcription_id(transcription_id)
 
         if not transc:
             return {'message': 'Transcrição não encontrada'}, 404
@@ -521,21 +511,21 @@ class WordTranscription(Resource):
 
         data = parser.parse_args()
 
-        word = WordModel.find_by_word(data['word'])
+        word = Word.find_by_word(data['word'])
 
         if word is None:
-            logger.warn('Palavra {} inexistente'.format(data['word']))
+            current_app.logger.warn('Palavra {} inexistente'.format(data['word']))
             return {'message': 'Palavra {} inexistente'.format(data['word'])}
 
         try:
             transc.update_to_db(word_id=word.id, transcription=data['transcription'])
-            logger.info('Transcription {} atualizada com sucesso'.format(data['transcription']))
+            current_app.logger.info('Transcription {} atualizada com sucesso'.format(data['transcription']))
             return {
                        'message': 'Transcription {} atualizada com sucesso'.format(data['transcription']),
                        'route': '/api/transcription/{}'.format(transc.id)
                    }, 201
         except Exception as e:
-            logger.error('Error {}'.format(e))
+            current_app.logger.error('Error {}'.format(e))
             return {'message': 'Algo de errado não está certo, não foi possível atualizar sua palavra'}, 500
 
     @jwt_required
@@ -543,19 +533,19 @@ class WordTranscription(Resource):
         if not transcription_id:
             return {'message': 'Transcrição não encontrada'}
 
-        transc = WordTranscriptionModel.find_by_transcription_id(transcription_id)
+        transc = WordTranscription.find_by_transcription_id(transcription_id)
 
         if not transc:
             return {'message': 'Transcrição não encontrada'}, 404
 
         try:
             transc.delete_transcription()
-            logger.info('Transcrição {} deletada com sucesso'.format(transc.transcription))
+            current_app.logger.info('Transcrição {} deletada com sucesso'.format(transc.transcription))
             return {
                 'message': 'Transcrição {} deletada com sucesso'.format(transc.transcription),
             }
         except Exception as e:
-            logger.error('Error {}'.format(e))
+            current_app.logger.error('Error {}'.format(e))
             return {'message': 'Algo de errado não está certo, não foi possível deletar sua Transcrição'}, 500
 
 
@@ -568,26 +558,26 @@ class WordTranscriptionRegistration(Resource):
 
         data = parser.parse_args()
 
-        word = WordModel.find_by_word(data['word'])
+        word = Word.find_by_word(data['word'])
 
         if word is None:
-            logger.warn('Palavra {} inexistente'.format(data['word']))
+            current_app.logger.warn('Palavra {} inexistente'.format(data['word']))
             return {'message': 'Palavra {} inexistente'.format(data['word'])}
 
-        new_transcription = WordTranscriptionModel(
+        new_transcription = WordTranscription(
             word_id=word.id,
             transcription=str(data['transcription']).strip()
         )
         try:
             new_transcription.save_to_db()
 
-            logger.info('Transcrição de {} criada com sucesso'.format(data['word']))
+            current_app.logger.info('Transcrição de {} criada com sucesso'.format(data['word']))
             return {
                        'message': 'Transcrição de {} criada com sucesso'.format(data['word']),
                        'route': '/api/transcription/{}'.format(new_transcription.id)
                    }, 201
         except Exception as e:
-            logger.error('Error {}'.format(e))
+            current_app.logger.error('Error {}'.format(e))
             return {'message': 'Algo de errado não está certo, não foi possível cadastrar sua Transcrição'}, 500
 
 
@@ -604,17 +594,17 @@ class EvaluationRegistration(Resource):
         parser.add_argument('patient_id', help='Paciente é obrigatório', required=True)
         data = parser.parse_args()
 
-        patient = PatientModel.find_by_id(data['patient_id'])
+        patient = Patient.find_by_id(data['patient_id'])
 
         if not patient:
-            logger.warn('Paciente inexistente')
+            current_app.logger.warn('Paciente inexistente')
             return {'message': 'Paciente inexistente'}, 422
 
         username = get_jwt_identity()
 
-        current_user = UserModel.find_by_username(username)
+        current_user = User.find_by_username(username)
 
-        new_evaluation = EvaluationModel(
+        new_evaluation = Evaluation(
             type=data['type'],
             patient_id=patient.id,
             evaluator_id=current_user.id,
@@ -623,26 +613,26 @@ class EvaluationRegistration(Resource):
         try:
             new_evaluation.save_to_db()
 
-            logger.info('Avaliação criada com sucesso')
+            current_app.logger.info('Avaliação criada com sucesso')
             return {
                        'message': 'Avaliação criada com sucesso',
                        'route': '/api/evaluation/{}'.format(new_evaluation.id)
                    }, 201
         except Exception as e:
-            logger.error('Error {}'.format(e))
+            current_app.logger.error('Error {}'.format(e))
             return {
                        'message': 'Algo de errado não está certo, não foi possível cadastrar sua Avaliação',
                        'error': '{}'.format(e)
                    }, 500
 
 
-class Evaluation(Resource):
+class EvaluationResource(Resource):
     @jwt_required
     def get(self, evaluation_id=None):
         if not evaluation_id:
             return {'message': 'Avaliação não encontrada'}, 404
 
-        evaluation = EvaluationModel.find_by_id(evaluation_id)
+        evaluation = Evaluation.find_by_id(evaluation_id)
 
         if not evaluation:
             return {'message': 'Avaliação não encontrada'}, 404
@@ -663,7 +653,7 @@ class Evaluation(Resource):
         if not evaluation_id:
             return {'message': 'Avaliação não encontrada'}, 404
 
-        evaluation = EvaluationModel.find_by_id(evaluation_id)
+        evaluation = Evaluation.find_by_id(evaluation_id)
 
         if not evaluation:
             return {'message': 'Avaliação não encontrada'}, 404
@@ -679,13 +669,13 @@ class Evaluation(Resource):
 
         try:
             evaluation.update_to_db(type=data['type'], patient_id=data['patient_id'])
-            logger.info('Avaliação alterada com sucesso')
+            current_app.logger.info('Avaliação alterada com sucesso')
             return {
                        'message': 'Avaliação alterada com sucesso',
                        'info': 'api/pacient/{}'.format(evaluation.id)
                    }, 200
         except Exception as e:
-            logger.error('PUT EVALUATION -> {}'.format(e))
+            current_app.logger.error('PUT EVALUATION -> {}'.format(e))
             return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
 
 
@@ -712,17 +702,17 @@ class WordEvaluationRegistration(Resource):
 
         data = parser.parse_args()
 
-        evaluation = EvaluationModel.find_by_id(data['evaluation_id'])
+        evaluation = Evaluation.find_by_id(data['evaluation_id'])
 
         if not evaluation:
             return {'message': 'Avaliação não encontrada'}, 404
 
-        word = WordModel.find_by_word(data['word'])
+        word = Word.find_by_word(data['word'])
 
         if not word:
             return {'message': 'Palavra não encontrada'}, 404
 
-        target_transc = WordTranscriptionModel.find_by_transcription_id(data['transcription_target_id'])
+        target_transc = WordTranscription.find_by_transcription_id(data['transcription_target_id'])
 
         if not target_transc:
             return {'message': 'Transcrição alvo não encontrada'}, 404
@@ -738,11 +728,11 @@ class WordEvaluationRegistration(Resource):
             try:
                 data['audio'].save(full_path)
             except Exception as e:
-                logger.error('POST WORD_EVALUATION  SAVE AUDIO -> {}'.format(e))
+                current_app.logger.error('POST WORD_EVALUATION  SAVE AUDIO -> {}'.format(e))
                 return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
             else:
 
-                new_word_eval = WordEvaluationModel(
+                new_word_eval = WordEvaluation(
                     evaluation_id=evaluation.id,
                     word_id=word.id,
                     transcription_target_id=target_transc.id,
@@ -756,11 +746,11 @@ class WordEvaluationRegistration(Resource):
                         q = Queue()
 
                         username = get_jwt_identity()
-                        current_user = UserModel.find_by_username(username)
+                        current_user = User.find_by_username(username)
 
                         new_word_eval.save_to_db()
 
-                        # logger.info('Avaliação do audio criada com sucesso')
+                        # current_app.logger.info('Avaliação do audio criada com sucesso')
                         # task1 = q.enqueue(new_word_eval.google_transcribe_audio, full_path)
                         #  GOOGLE API AUDIO EVALUATION
 
@@ -780,7 +770,7 @@ class WordEvaluationRegistration(Resource):
                                }
                            }, 201
                 except Exception as e:
-                    logger.error('POST WORD_EVALUATION -> {}'.format(e))
+                    current_app.logger.error('POST WORD_EVALUATION -> {}'.format(e))
                     return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
         else:
             return {
@@ -794,7 +784,9 @@ class TaskStatus(Resource):
     @jwt_required
     def get(self, task_id):
 
-        task = current_app.task_queue.fetch_job(task_id)
+        with Connection(redis.from_url(current_app.config['REDIS_URL'])):
+            q = Queue()
+            task = q.fetch_job(task_id)
         if task:
             response_object = {
                 'status': 'success',
@@ -856,8 +848,3 @@ class SecretResource(Resource):
         return {
             'answer': 42
         }
-
-
-from .models import UserModel, TaskModel, EvaluationModel, PatientModel, WordTranscriptionModel, \
-    WordModel, WordEvaluationModel, RevokedTokenModel, EnumType
-from .tasks import ml_transcribe_audio
