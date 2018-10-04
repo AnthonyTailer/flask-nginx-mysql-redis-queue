@@ -1,12 +1,12 @@
-from app import db
 from sqlalchemy import func
 from sqlalchemy.orm import relationship, backref
 import enum
+from flask import current_app
 from passlib.hash import pbkdf2_sha256 as sha256
 from app.helpers import get_date_br
 import redis
 import rq
-from flask import current_app
+from app import db
 
 class EnumType(enum.Enum):
     anonymous = 1,
@@ -62,14 +62,9 @@ class User(db.Model):
         db.session.commit()
 
     def launch_task(self, name, description, *args):
-        # logger.error("TASK -> {}".format(name))
-        # logger.error("TASK -> {}".format(description))
-        # for i in args:
-        #     logger.error("TASK -> {}".format(i))
-        rq_job = current_app.task_queue.enqueue(name, *args)
+        rq_job = current_app.task_queue.enqueue('app.tasks.' +name, *args)
         task = Task(id=rq_job.get_id(), name=name, description=description, user=self)
         db.session.add(task)
-        db.session.commit()
         return task
 
     def get_tasks_in_progress(self):

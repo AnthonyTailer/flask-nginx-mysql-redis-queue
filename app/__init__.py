@@ -1,30 +1,27 @@
-from flask import Flask, make_response, Blueprint
-from flask_jwt_extended import JWTManager
-from flask_restful import Api
-from flask_restful.representations import json
-
+import os
+import rq
+import logging
+from redis import Redis
+import rq_dashboard
+from flask import Flask
 from config import BaseConfig
+from flask_jwt_extended import JWTManager
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-import logging
 from logging.handlers import RotatingFileHandler
-import os
-from app import helpers, resources
 
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
 
 
-def create_app():
+def create_app(config_class=BaseConfig):
     app = Flask(__name__)
-    app.config.from_object(BaseConfig)
+    app.config.from_object(config_class)
 
     db.init_app(app)
     migrate.init_app(app, db)
-    # api = Api(app)
 
-    # set JWT Authentication
     app.config['JWT_SECRET_KEY'] = helpers.generate_hash_from_filename('jwt-secret-string')
     app.config['JWT_BLACKLIST_ENABLED'] = True
     app.config['JWT_BLACKLIST_TOKEN_CHECKS'] = ['access']
@@ -35,6 +32,9 @@ def create_app():
     def check_if_token_in_blacklist(decrypted_token):
         jti = decrypted_token['jti']
         return models.RevokedToken.is_jti_blacklisted(jti)
+
+    app.redis = Redis.from_url(app.config['REDIS_URL'])
+    app.task_queue = rq.Queue('api-tasks', connection=app.redis)
 
     if not os.path.exists('logs'):
         os.mkdir('logs')
@@ -48,8 +48,11 @@ def create_app():
     app.logger.setLevel(logging.INFO)
     app.logger.info('Speech API startup')
 
-    # api.add_resource(resources.UserRegistration, '/api/registration')
-    #
+    from app.api import bp as api_bp
+    app.register_blueprint(api_bp, url_prefix='/api')
+    app.register_blueprint(rq_dashboard.blueprint, url_prefix="/rq")
+    # api.add_resource(UserRegistration, '/api/registration')
+
     # api.add_resource(resources.UserLogin, '/api/login')
     #
     # api.add_resource(resources.UserLogoutAccess, '/api/logout')
@@ -79,9 +82,9 @@ def create_app():
     #
     # # Tasks routes
     # api.add_resource(resources.TaskStatus, '/api/task/<task_id>')
-    #
+
     # api.add_resource(resources.SecretResource, '/api/secret')
-    #
+
     # @api.representation('application/json')
     # def output_json(data, code, headers=None):
     #     resp = make_response(json.dumps(data), code)
@@ -91,4 +94,4 @@ def create_app():
     return app
 
 
-from app import models
+from app import models, helpers

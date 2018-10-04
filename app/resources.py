@@ -742,31 +742,30 @@ class WordEvaluationRegistration(Resource):
                 )
 
                 try:
-                    with Connection(redis.from_url(current_app.config['REDIS_URL'])):
-                        q = Queue()
 
-                        username = get_jwt_identity()
-                        current_user = User.find_by_username(username)
 
-                        new_word_eval.save_to_db()
+                    username = get_jwt_identity()
+                    current_user = User.find_by_username(username)
 
-                        # current_app.logger.info('Avaliação do audio criada com sucesso')
-                        # task1 = q.enqueue(new_word_eval.google_transcribe_audio, full_path)
-                        #  GOOGLE API AUDIO EVALUATION
+                    new_word_eval.save_to_db()
 
-                        # ML AUDIO EVALUATION
-                        task2 = q.enqueue(ml_transcribe_audio, new_word_eval.evaluation_id, new_word_eval.word_id,
-                                          data['word'], full_path)
-                        # job2 = task2.get_rq_job()
-                        # task2 = q.enqueue(current_app, ml_transcribe_audio, new_word_eval.evaluation_id, new_word_eval.word_id,
-                        #                   data['word'], full_path)
+                    # current_app.logger.info('Avaliação do audio criada com sucesso')
+                    # task1 = q.enqueue(new_word_eval.google_transcribe_audio, full_path)
+                    #  GOOGLE API AUDIO EVALUATION
+
+                    # ML AUDIO EVALUATION
+                    task2 = current_user.lanch_task('ml_transcribe_audio', 'Audio Evaluation', new_word_eval.evaluation_id, new_word_eval.word_id,
+                                      data['word'], full_path)
+                    # job2 = task2.get_rq_job()
+                    # task2 = q.enqueue(current_app, ml_transcribe_audio, new_word_eval.evaluation_id, new_word_eval.word_id,
+                    #                   data['word'], full_path)
                     return {
                                'message': 'Avaliação do audio criada com sucesso',
                                'data': {
                                    # 'task_api_id': task1.get_id(),
                                    # 'url_api': 'api/task/' + str(task1.get_id()),
-                                   'task_ml_id': task2.get_id(),
-                                   'url_ml': 'api/task/' + str(task2.get_id()),
+                                   'task_ml_id': task2.id,
+                                   'url_ml': 'api/task/' + str(task2.id),
                                }
                            }, 201
                 except Exception as e:
