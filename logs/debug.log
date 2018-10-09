@@ -1,61 +1,40 @@
-2018-10-03 22:38:35,279 ERROR: Exception on /api/login [POST] [in /home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py:1560]
+2018-10-08 23:11:16,582 ERROR: Exception on /api/user [GET] [in /home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py:1560]
 Traceback (most recent call last):
   File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1982, in wsgi_app
     response = self.full_dispatch_request()
-  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1614, in full_dispatch_request
-    rv = self.handle_user_exception(e)
-  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1517, in handle_user_exception
-    reraise(exc_type, exc_value, tb)
-  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/_compat.py", line 33, in reraise
-    raise value
-  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1612, in full_dispatch_request
-    rv = self.dispatch_request()
-  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1598, in dispatch_request
-    return self.view_functions[rule.endpoint](**req.view_args)
-  File "/home/anthony/workspace/flask-speech-api/app/api/users.py", line 15, in login
-    return data['username']
-AttributeError: 'dict' object has no attribute 'username'
-2018-10-03 22:38:53,050 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:38:53,086 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:38:53,087 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:38:53,183 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:38:54,270 WARNING: REQUEST -> {'username': 'tailer', 'password': 'asdf123'} [in /home/anthony/workspace/flask-speech-api/app/api/users.py:14]
-2018-10-03 22:44:03,193 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:44:03,361 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:44:03,498 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:44:03,527 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:44:17,037 ERROR: Exception on /api/registration [POST] [in /home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py:1560]
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1615, in full_dispatch_request
+    return self.finalize_request(rv)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1630, in finalize_request
+    response = self.make_response(rv)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1740, in make_response
+    rv = self.response_class.force_type(rv, request.environ)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/werkzeug/wrappers.py", line 921, in force_type
+    response = BaseResponse(*_run_wsgi_app(response, environ))
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/werkzeug/wrappers.py", line 59, in _run_wsgi_app
+    return _run_wsgi_app(*args)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/werkzeug/test.py", line 923, in run_wsgi_app
+    app_rv = app(environ, start_response)
+TypeError: 'dict' object is not callable
+2018-10-08 23:11:22,339 ERROR: Exception on /api/user [GET] [in /home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py:1560]
 Traceback (most recent call last):
   File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1982, in wsgi_app
     response = self.full_dispatch_request()
-  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1614, in full_dispatch_request
-    rv = self.handle_user_exception(e)
-  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1517, in handle_user_exception
-    reraise(exc_type, exc_value, tb)
-  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/_compat.py", line 33, in reraise
-    raise value
-  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1612, in full_dispatch_request
-    rv = self.dispatch_request()
-  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1598, in dispatch_request
-    return self.view_functions[rule.endpoint](**req.view_args)
-  File "/home/anthony/workspace/flask-speech-api/app/api/users.py", line 29, in registration
-    fullname=data['fullname'],
-KeyError: 'fullname'
-2018-10-03 22:44:53,128 INFO: Usuário anthony criado com sucesso [in /home/anthony/workspace/flask-speech-api/app/api/users.py:36]
-2018-10-03 22:52:42,362 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:52:42,482 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:52:42,661 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:52:42,719 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:54:07,052 WARNING: REQUEST -> {'username': 'anthony', 'password': 'senha123'} [in /home/anthony/workspace/flask-speech-api/app/api/users.py:50]
-2018-10-03 22:54:44,101 WARNING: REQUEST -> {'username': 'anthony', 'password': 'senha123'} [in /home/anthony/workspace/flask-speech-api/app/api/users.py:50]
-2018-10-03 22:55:33,773 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:55:33,793 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:55:33,953 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:55:34,026 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:55:44,897 WARNING: REQUEST -> {'username': 'anthony', 'password': 'senha123'} [in /home/anthony/workspace/flask-speech-api/app/api/users.py:50]
-2018-10-03 22:57:23,928 WARNING: Usuário anthony já existe [in /home/anthony/workspace/flask-speech-api/app/api/users.py:15]
-2018-10-03 22:57:27,632 WARNING: REQUEST -> {'username': 'anthony', 'password': 'senha123'} [in /home/anthony/workspace/flask-speech-api/app/api/users.py:50]
-2018-10-03 22:57:37,238 ERROR: Exception on /api/task [GET] [in /home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py:1560]
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1615, in full_dispatch_request
+    return self.finalize_request(rv)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1630, in finalize_request
+    response = self.make_response(rv)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1740, in make_response
+    rv = self.response_class.force_type(rv, request.environ)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/werkzeug/wrappers.py", line 921, in force_type
+    response = BaseResponse(*_run_wsgi_app(response, environ))
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/werkzeug/test.py", line 923, in run_wsgi_app
+    app_rv = app(environ, start_response)
+TypeError: 'dict' object is not callable
+2018-10-08 23:12:27,054 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:12:27,208 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:12:27,256 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:12:27,325 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:12:42,823 ERROR: Exception on /api/user [GET] [in /home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py:1560]
 Traceback (most recent call last):
   File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1982, in wsgi_app
     response = self.full_dispatch_request()
@@ -71,31 +50,51 @@ Traceback (most recent call last):
     return self.view_functions[rule.endpoint](**req.view_args)
   File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask_jwt_extended/view_decorators.py", line 103, in wrapper
     return fn(*args, **kwargs)
-  File "/home/anthony/workspace/flask-speech-api/app/api/users.py", line 73, in test
-    task = current_user.lanch_task('ml_transcribe_audio', 'Audio Evaluation', current_user.id)
-AttributeError: 'User' object has no attribute 'lanch_task'
-2018-10-03 22:58:28,917 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:58:29,166 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:58:29,215 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:58:29,217 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 22:58:35,310 WARNING: REQUEST -> {'username': 'anthony', 'password': 'senha123'} [in /home/anthony/workspace/flask-speech-api/app/api/users.py:50]
-2018-10-03 22:58:44,294 INFO: Speech API startup [in ./app/__init__.py:49]
-2018-10-03 23:00:06,164 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:00:06,329 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:00:06,479 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:00:06,545 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:00:07,852 WARNING: REQUEST -> {'username': 'anthony', 'password': 'senha123'} [in /home/anthony/workspace/flask-speech-api/app/api/users.py:50]
-2018-10-03 23:00:18,511 INFO: Speech API startup [in ./app/__init__.py:49]
-2018-10-03 23:02:22,900 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:02:22,998 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:02:23,138 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:02:23,183 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:02:25,520 WARNING: REQUEST -> {'username': 'anthony', 'password': 'senha123'} [in /home/anthony/workspace/flask-speech-api/app/api/users.py:50]
-2018-10-03 23:02:46,055 INFO: Speech API startup [in ./app/__init__.py:49]
-2018-10-03 23:05:12,998 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:10:52,830 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:10:53,015 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:10:53,164 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:10:53,194 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
-2018-10-03 23:10:59,810 WARNING: REQUEST -> {'username': 'anthony', 'password': 'senha123'} [in /home/anthony/workspace/flask-speech-api/app/api/users.py:50]
-2018-10-03 23:11:07,958 INFO: Speech API startup [in ./app/__init__.py:49]
+  File "/home/anthony/workspace/flask-speech-api/app/api/users.py", line 185, in user
+    return db.session.query(User).filter_by(username=username).asdict()
+AttributeError: 'BaseQuery' object has no attribute 'asdict'
+2018-10-08 23:44:50,482 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:44:50,491 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:44:50,525 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:44:50,594 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:45:11,501 ERROR: Exception on /api/user [GET] [in /home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py:1560]
+Traceback (most recent call last):
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1982, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1615, in full_dispatch_request
+    return self.finalize_request(rv)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1630, in finalize_request
+    response = self.make_response(rv)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1740, in make_response
+    rv = self.response_class.force_type(rv, request.environ)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/werkzeug/wrappers.py", line 921, in force_type
+    response = BaseResponse(*_run_wsgi_app(response, environ))
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/werkzeug/wrappers.py", line 59, in _run_wsgi_app
+    return _run_wsgi_app(*args)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/werkzeug/test.py", line 923, in run_wsgi_app
+    app_rv = app(environ, start_response)
+TypeError: 'dict' object is not callable
+2018-10-08 23:51:30,421 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:52:18,373 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:52:38,339 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:52:53,925 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:53:04,218 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:53:04,450 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:53:04,621 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:53:04,667 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:54:28,507 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:54:28,531 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:54:28,661 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-08 23:54:28,678 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:49]
+2018-10-09 00:13:35,509 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:52]
+2018-10-09 00:13:35,554 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:52]
+2018-10-09 00:13:35,588 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:52]
+2018-10-09 00:13:35,630 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:52]
+2018-10-09 00:14:11,305 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:52]
+2018-10-09 00:14:11,336 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:52]
+2018-10-09 00:14:11,406 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:52]
+2018-10-09 00:14:11,485 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:52]
+2018-10-09 00:16:11,368 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:52]
+2018-10-09 00:16:11,535 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:52]
+2018-10-09 00:16:11,632 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:52]
+2018-10-09 00:16:11,640 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:52]

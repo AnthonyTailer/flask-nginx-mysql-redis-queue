@@ -9,10 +9,12 @@ from flask_jwt_extended import JWTManager
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from logging.handlers import RotatingFileHandler
+from flask_marshmallow import Marshmallow
 
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
+ma = Marshmallow()
 
 
 def create_app(config_class=BaseConfig):
@@ -21,6 +23,7 @@ def create_app(config_class=BaseConfig):
 
     db.init_app(app)
     migrate.init_app(app, db)
+    ma.init_app(app)
 
     app.config['JWT_SECRET_KEY'] = helpers.generate_hash_from_filename('jwt-secret-string')
     app.config['JWT_BLACKLIST_ENABLED'] = True
@@ -51,14 +54,10 @@ def create_app(config_class=BaseConfig):
     from app.api import bp as api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(rq_dashboard.blueprint, url_prefix="/rq")
-    # api.add_resource(UserRegistration, '/api/registration')
 
-    # api.add_resource(resources.UserLogin, '/api/login')
-    #
-    # api.add_resource(resources.UserLogoutAccess, '/api/logout')
-    # api.add_resource(resources.UserResource, '/api/user', endpoint='user')  # GET and PUT
-    # api.add_resource(resources.UserResetPassword, '/api/user/change/password')
-    #
+
+
+
     # # Patitent routes
     # api.add_resource(resources.PatientRegistration, '/api/patient')
     # api.add_resource(resources.PatientResource, '/api/patient/<patient_id>')

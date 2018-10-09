@@ -6,7 +6,8 @@ from passlib.hash import pbkdf2_sha256 as sha256
 from app.helpers import get_date_br
 import redis
 import rq
-from app import db
+from app import db, ma
+
 
 class EnumType(enum.Enum):
     anonymous = 1,
@@ -36,12 +37,10 @@ class User(db.Model):
 
     def save_to_db(self):
         db.session.add(self)
-        db.session.commit()
 
     def update_to_db(self, username, fullname, type):
-        User.query.filter_by(username=self.username) \
+        db.session.query(User).filter_by(username=self.username) \
             .update({'username': username, 'fullname': fullname, 'type': type})
-        db.session.commit()
 
     @staticmethod
     def generate_hash(password):
@@ -57,22 +56,27 @@ class User(db.Model):
 
     @classmethod
     def change_password(cls, username, new_password):
-        User.query.filter_by(username=username) \
+        db.session.query(User).filter_by(username=username) \
             .update({'password': cls.generate_hash(new_password)})
-        db.session.commit()
 
     def launch_task(self, name, description, *args):
-        rq_job = current_app.task_queue.enqueue('app.tasks.' +name, *args)
+        rq_job = current_app.task_queue.enqueue('app.tasks.' + name, *args)
         task = Task(id=rq_job.get_id(), name=name, description=description, user=self)
         db.session.add(task)
         return task
 
     def get_tasks_in_progress(self):
-        return Task.query.filter_by(user=self, complete=False).all()
+        return db.session.query(Task).filter_by(user=self, complete=False).all()
 
     def get_task_in_progress(self, name):
-        return Task.query.filter_by(name=name, user=self,
-                                    complete=False).first()
+        return db.session.query(Task).filter_by(name=name, user=self,
+                                                complete=False).first()
+
+
+class UserSchema(ma.Schema):
+    class Meta:
+        # Fields to expose
+        fields = ('username', 'fullname', 'type')
 
 
 class Task(db.Model):
@@ -104,11 +108,10 @@ class RevokedToken(db.Model):
 
     def add(self):
         db.session.add(self)
-        db.session.commit()
 
     @classmethod
     def is_jti_blacklisted(cls, jti):
-        query = RevokedToken.query.filter_by(jti=jti).first()
+        query = db.session.query(RevokedToken).filter_by(jti=jti).first()
         return bool(query)
 
 
@@ -138,32 +141,32 @@ class Patient(db.Model):
         db.session.commit()
 
     def update_to_db(self, name, birth, sex, school, school_type, caregiver, phone, city, state, address):
-        Patient.query.filter_by(id=self.id) \
+        db.session.query(Patient).filter_by(id=self.id) \
             .update({
-                'name': name,
-                'birth': birth,
-                'sex': sex,
-                'school': school,
-                'school_type': school_type,
-                'caregiver': caregiver,
-                'phone': phone,
-                'city': city,
-                'state': state,
-                'address': address,
-            })
+            'name': name,
+            'birth': birth,
+            'sex': sex,
+            'school': school,
+            'school_type': school_type,
+            'caregiver': caregiver,
+            'phone': phone,
+            'city': city,
+            'state': state,
+            'address': address,
+        })
         db.session.commit()
 
     @classmethod
     def find_by_name(cls, name):
-        return Patient.query.filter_by(name=name).first()
+        return db.session.query(Patient).filter_by(name=name).first()
 
     @classmethod
     def find_by_id(cls, id):
-        return Patient.query.filter_by(id=id).first()
+        return db.session.query(Patient).filter_by(id=id).first()
 
     @classmethod
     def return_all(cls):
-        return Patient.query.all()
+        return db.session.query(Patient).all()
 
 
 class Word(db.Model):
@@ -173,7 +176,7 @@ class Word(db.Model):
         return '{}'.format(self.word)
 
     def orderdefinition(self):
-        return func.query(Word.count(Word.id)).scalar() + 1
+        return func.query(db.session.count(Word.id)).scalar() + 1
 
     id = db.Column(db.Integer, primary_key=True)
     word = db.Column(db.String(255), nullable=False, unique=True)
@@ -188,24 +191,24 @@ class Word(db.Model):
         db.session.commit()
 
     def update_to_db(self, word, tip):
-        Word.query \
+        db.session.query(Word) \
             .filter_by(word=self.word) \
             .update({'word': word, 'tip': tip})
         db.session.commit()
 
     @classmethod
     def delete_by_word(cls, word):
-        word_delete = Word.query.filter_by(word=word).first()
+        word_delete = db.session.query(Word).filter_by(word=word).first()
         db.delete(word_delete)
         db.session.commit()
 
     @classmethod
     def find_by_word(cls, word):
-        return Word.query.filter_by(word=word).first()
+        return db.session.query(Word).filter_by(word=word).first()
 
     @classmethod
     def return_all(cls):
-        return Word.query.all()
+        return db.session.query(Word).all()
 
 
 class WordTranscription(db.Model):
@@ -224,7 +227,7 @@ class WordTranscription(db.Model):
         db.session.commit()
 
     def update_to_db(self, word_id, transcription):
-        WordTranscription.query \
+        db.session.query(WordTranscription) \
             .filter_by(transcription=self.transcription) \
             .update({'word_id': word_id, 'transcription': transcription})
         db.session.commit()
@@ -235,11 +238,11 @@ class WordTranscription(db.Model):
 
     @classmethod
     def find_by_word_id(cls, word_id):
-        return WordTranscription.query.filter_by(word_id=word_id).all()
+        return db.session.query(WordTranscription).filter_by(word_id=word_id).all()
 
     @classmethod
     def find_by_transcription_id(cls, id):
-        return WordTranscription.query.filter_by(id=id).first()
+        return db.session.query(WordTranscription).filter_by(id=id).first()
 
     @classmethod
     def return_all(cls):
@@ -250,7 +253,7 @@ class WordTranscription(db.Model):
                 'word': x.word,
             }
 
-        return {'transcriptions': list(map(lambda x: to_json(x), WordTranscription.query.all()))}
+        return {'transcriptions': list(map(lambda x: to_json(x), db.session.query(WordTranscription).all()))}
 
 
 class Evaluation(db.Model):
@@ -276,7 +279,7 @@ class Evaluation(db.Model):
         db.session.commit()
 
     def update_to_db(self, type, patient_id):
-        Evaluation.query \
+        db.session.query(Evaluation) \
             .filter_by(id=self.id) \
             .update({
             'type': type,
@@ -286,7 +289,7 @@ class Evaluation(db.Model):
 
     @classmethod
     def find_all_user_evaluations(cls, user_id):
-        return Evaluation.query.filter_by(id=user_id).first()
+        return db.session.query(Evaluation).filter_by(id=user_id).first()
 
 
 class WordEvaluation(db.Model):
@@ -311,7 +314,7 @@ class WordEvaluation(db.Model):
         db.session.commit()
 
     def update_to_db(self, transcription_target_id, transcription, repetition, audio_path):
-        WordEvaluation.query \
+        db.session.query(WordEvaluation) \
             .filter_by(evaluation_id=self.evaluation_id) \
             .filter_by(word_id=self.word_id) \
             .update({
@@ -369,4 +372,4 @@ class WordEvaluation(db.Model):
 
     @classmethod
     def find_evaluations_by_id(cls, evaluation_id):
-        return WordEvaluation.query.filter_by(evaluation_id=evaluation_id).all()
+        return db.session.query(WordEvaluation).filter_by(evaluation_id=evaluation_id).all()
