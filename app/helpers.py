@@ -24,6 +24,17 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
 
 
+def validate_date(date_text):
+    try:
+        return datetime.strptime(date_text, '%Y-%m-%d')
+    except ValueError:
+        return False
+
+
+def is_in_choices(item, choices):
+    return item in choices
+
+
 def get_date_br():
     now = datetime.now()
     diff = timedelta(hours=-3)

@@ -1,8 +1,7 @@
-from flask import request, jsonify
-from flask_restful import marshal, fields
+from flask import request, jsonify, g
 
+from app.api.auth import token_auth
 from app.models import User, EnumType, RevokedToken, UserSchema
-from flask_jwt_extended import (create_access_token, jwt_required, get_raw_jwt, get_jwt_identity)
 from app.api import bp
 from flask import current_app
 from app.api.errors import bad_request
@@ -10,13 +9,14 @@ from app import db
 
 
 @bp.route('/registration', methods=['POST'])
-def registration():
+def user_registration():
     data = request.get_json(silent=True) or {}
-    if User.find_by_username(data['username']):
-        return bad_request('Usuário {} já esta em uso'.format(data['username']))
 
     if 'username' not in data or 'fullname' not in data or 'password' not in data or 'type' not in data:
         return bad_request('Os campos username, fullname, password e type são obrigatórios')
+
+    if User.find_by_username(data['username']):
+        return bad_request('Usuário {} já esta em uso'.format(data['username']))
 
     try:
         if data['type'] in EnumType.__members__:
@@ -34,13 +34,11 @@ def registration():
     )
     try:
         new_user.save_to_db()
-        access_token = create_access_token(identity=data['username'], expires_delta=False)
         msg = 'Usuário {} criado com sucesso'.format(data['username'])
         current_app.logger.info(msg)
         db.session.commit()
         return jsonify({
             'message': msg,
-            'access_token': access_token,
             'login': 'api/login'
         }), 201
     except Exception as e:
@@ -50,7 +48,7 @@ def registration():
 
 
 @bp.route('/login', methods=['POST'])
-def login():
+def user_login():
     data = request.get_json(silent=True) or {}
 
     if 'username' not in data or 'password' not in data:
@@ -61,33 +59,34 @@ def login():
         return bad_request('Usuário {} inexistente'.format(data['username']))
 
     if User.verify_hash(data['password'], current_user.password):
-        access_token = create_access_token(identity=data['username'], expires_delta=False)
+        access_token = current_user.get_token()
+        db.session.commit()
         return jsonify({
             'message': 'Logado como {}'.format(current_user.username),
-            'access_token': access_token,
+            'token': access_token,
             'info': 'api/user'
         }), 200
     else:
-        return {'message': 'Senha ou usuário incorretos'}, 400
+        return jsonify({'message': 'Senha ou usuário incorretos'}), 400
 
 
 @bp.route('/logout', methods=['POST'])
-@jwt_required
-def logout():
-    jti = get_raw_jwt()['jti']
+@token_auth.login_required
+def user_logout():
+    token = g.current_user.token
     try:
-        revoked_token = RevokedToken(jti=jti)
+        revoked_token = RevokedToken(token=token)
         revoked_token.add()
         db.session.commit()
         msg = 'O seu token de acesso foi revogado com sucesso'
         current_app.logger.info(msg)
 
-        return {'message': msg}, 200
+        return jsonify({'message': msg}), 200
     except Exception as e:
         msg = 'Algo de errado não está certo, {}'.format(e)
         current_app.logger.error(msg)
-        db.session.rollback()
-        return {'message': msg}, 500
+        return jsonify({'message': msg}), 500
+
 
 # @bp.route('/task', methods=['GET'])
 # @jwt_required
@@ -105,11 +104,11 @@ def logout():
 
 
 @bp.route('/password/change', methods=['POST'])
-@jwt_required
-def change_pass():
-    username = get_jwt_identity()
+@token_auth.login_required
+def user_change_pass():
+    username = g.current_user.username
     data = request.get_json(silent=True) or {}
-    current_user = User.find_by_username(username)
+    current_user = g.current_user
 
     if 'current_password' not in data or 'new_password' not in data:
         return bad_request('Os campos current_password e new_password são obrigatórios')
@@ -122,35 +121,36 @@ def change_pass():
             msg = 'Senha alterada com sucesso'
             current_app.logger.info(msg)
             try:
-                jti = get_raw_jwt()['jti']
-                revoked_token = RevokedToken(jti=jti)
-                revoked_token.add()
+                g.current_user.revoke_token()
                 db.session.commit()
-                return {
-                           'message': 'Senha alterada com sucesso',
-                       }, 200
+                return jsonify({
+                    'message': msg,
+                }), 200
             except Exception as e:
                 db.session.rollback()
-                return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
+                return jsonify({'message': 'Algo de errado não está certo, {}'.format(e)}), 500
         except Exception as e:
             db.session.rollback()
             current_app.logger.error('Error {}'.format(e))
-            return {'message': 'Algo de errado não está certo'}, 500
-    return {'message': 'A senha atual não está correta'}, 422
+            return jsonify({'message': 'Algo de errado não está certo'}), 500
+    return jsonify({'message': 'A senha atual não está correta'}), 422
 
 
 @bp.route('/user', methods=['PUT', 'GET'])
-@jwt_required
-def user():
-    data = request.get_json(silent=True) or {}
-    username = get_jwt_identity()
+@token_auth.login_required
+def user_info_change():
 
-    if request.method == 'PUT':
+    if request.method == 'GET':
+        user_schema = UserSchema()
+        output = user_schema.dump(g.current_user).data
+        return jsonify(output), 200
 
-        if 'username' not in data or 'fullname' not in data or 'password' not in data or 'type' not in data:
-            return bad_request('Os campos username, fullname, password e type são obrigatórios')
+    elif request.method == 'PUT':
+        data = request.get_json(silent=True) or {}
+        if 'username' not in data or 'fullname' not in data or 'type' not in data:
+            return bad_request('Os campos username, fullname e type são obrigatórios')
 
-        current_user = User.find_by_username(username)
+        current_user = g.current_user
         new_user = User.find_by_username(data['username'])
 
         if not current_user:
@@ -162,26 +162,19 @@ def user():
 
         try:
             current_user.update_to_db(data['username'], data['fullname'], data['type'])
-            current_app.logger.info('Usuário alterada com sucesso')
+            current_app.logger.info('Usuário alterado com sucesso')
             try:
-                if data['username'].strip() != username.strip():
-                    jti = get_raw_jwt()['jti']
-                    revoked_token = RevokedToken(jti=jti)
-                    revoked_token.add()
+                if data['username'].strip() != current_user.username.strip():
+                    g.current_user.revoke_token()
                 db.session.commit()
-                return {
-                           'message': 'Usuário alterada com sucesso',
-                       }, 200
+                return jsonify({
+                    'message': 'Usuário alterado com sucesso',
+                }), 200
             except Exception as e:
                 db.session.rollback()
-                return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
+                return jsonify({'message': 'Algo de errado não está certo, {}'.format(e)}), 500
         except Exception as e:
             db.session.rollback()
-            return {'message': 'Algo de errado não está certo, {}'.format(e)}, 500
-
-    elif request.method == 'GET':
-        user = User.find_by_username(username)
-        user_schema = UserSchema()
-        return user_schema.jsonify(user)
+            return jsonify({'message': 'Algo de errado não está certo, {}'.format(e)}), 500
     else:
-        return bad_request('Método não permitido')
+        return bad_request({'msg': 'Método não permitido'})

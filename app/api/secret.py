@@ -1,13 +1,10 @@
-from flask import jsonify, request, url_for
-from flask_jwt_extended import jwt_required
+from flask import jsonify
 from app.api import bp
+from app.api.auth import token_auth
 
-
-# from app.api.auth import token_auth
-# from app.api.errors import bad_request
 
 @bp.route('/secret', methods=['GET'])
-@jwt_required
+@token_auth.login_required
 def secret():
     return jsonify({
         'answer': 42

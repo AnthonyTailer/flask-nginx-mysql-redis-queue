@@ -1,8 +1,13 @@
+import base64
+import os
+
 from sqlalchemy import func
 from sqlalchemy.orm import relationship, backref
 import enum
 from flask import current_app
 from passlib.hash import pbkdf2_sha256 as sha256
+from sqlalchemy.orm.exc import NoResultFound
+
 from app.helpers import get_date_br
 import redis
 import rq
@@ -28,12 +33,31 @@ class User(db.Model):
     fullname = db.Column(db.String(255), nullable=False, index=True)
     password = db.Column(db.String(120), nullable=False)
     type = db.Column(db.String(120), nullable=False, index=True)
+    token = db.Column(db.String(32), index=True, unique=True)
 
     evaluations = relationship('Evaluation', backref="evaluator", lazy='dynamic')
     tasks = relationship('Task', backref='user', lazy='dynamic')
 
     def __repr__(self):
         return '{}'.format(self.username)
+
+    def get_token(self):
+        self.token = base64.b64encode(os.urandom(24)).decode('utf-8')
+        db.session.add(self)
+        return self.token
+
+    @staticmethod
+    def check_token(token):
+        if RevokedToken.is_token_blacklisted(token):
+            return None
+        user = User.query.filter_by(token=token).first()
+        if user is None:
+            return None
+        return user
+
+    def revoke_token(self):
+        revoked_token = RevokedToken(token=self.token)
+        db.session.add(revoked_token)
 
     def save_to_db(self):
         db.session.add(self)
@@ -52,7 +76,7 @@ class User(db.Model):
 
     @classmethod
     def find_by_username(cls, username):
-        return User.query.filter_by(username=username).first()
+        return db.session.query(User).filter_by(username=username).first()
 
     @classmethod
     def change_password(cls, username, new_password):
@@ -75,6 +99,7 @@ class User(db.Model):
 
 class UserSchema(ma.Schema):
     class Meta:
+        model = User
         # Fields to expose
         fields = ('username', 'fullname', 'type')
 
@@ -104,15 +129,18 @@ class RevokedToken(db.Model):
     __tablename__ = 'revoked_tokens'
 
     id = db.Column(db.Integer, primary_key=True)
-    jti = db.Column(db.String(120))
+    token = db.Column(db.String(120))
 
     def add(self):
         db.session.add(self)
 
     @classmethod
-    def is_jti_blacklisted(cls, jti):
-        query = db.session.query(RevokedToken).filter_by(jti=jti).first()
-        return bool(query)
+    def is_token_blacklisted(cls, token):
+        try:
+            token = db.session.query(RevokedToken).filter_by(token=token).one()
+            return token is not None
+        except NoResultFound:
+            return False
 
 
 class Patient(db.Model):

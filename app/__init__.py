@@ -5,7 +5,6 @@ from redis import Redis
 import rq_dashboard
 from flask import Flask
 from config import BaseConfig
-from flask_jwt_extended import JWTManager
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from logging.handlers import RotatingFileHandler
@@ -13,7 +12,6 @@ from flask_marshmallow import Marshmallow
 
 db = SQLAlchemy()
 migrate = Migrate()
-jwt = JWTManager()
 ma = Marshmallow()
 
 
@@ -24,17 +22,6 @@ def create_app(config_class=BaseConfig):
     db.init_app(app)
     migrate.init_app(app, db)
     ma.init_app(app)
-
-    app.config['JWT_SECRET_KEY'] = helpers.generate_hash_from_filename('jwt-secret-string')
-    app.config['JWT_BLACKLIST_ENABLED'] = True
-    app.config['JWT_BLACKLIST_TOKEN_CHECKS'] = ['access']
-
-    jwt.init_app(app)
-
-    @jwt.token_in_blacklist_loader
-    def check_if_token_in_blacklist(decrypted_token):
-        jti = decrypted_token['jti']
-        return models.RevokedToken.is_jti_blacklisted(jti)
 
     app.redis = Redis.from_url(app.config['REDIS_URL'])
     app.task_queue = rq.Queue('api-tasks', connection=app.redis)

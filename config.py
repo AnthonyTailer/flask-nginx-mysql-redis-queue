@@ -4,7 +4,7 @@ import os
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 from dotenv import load_dotenv
-load_dotenv(os.path.join(basedir, '.flaskenv'))
+load_dotenv(os.path.join(basedir, '.env'))
 
 
 class BaseConfig(object):
@@ -15,7 +15,6 @@ class BaseConfig(object):
     UPLOAD_FOLDER = './app/audios'
     ALLOWED_EXTENSIONS = {'wav'}
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-
 
     user = os.environ['MYSQL_USER']
     pwd = os.environ['MYSQL_ROOT_PASSWORD']
