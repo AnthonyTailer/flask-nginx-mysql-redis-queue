@@ -1,6 +1,7 @@
 import base64
 import os
 
+from marshmallow import fields
 from sqlalchemy import func
 from sqlalchemy.orm import relationship, backref
 import enum
@@ -25,85 +26,6 @@ class EnumType(enum.Enum):
         return str(self.name)
 
 
-class User(db.Model):
-    __tablename__ = 'users'
-
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(120), unique=True, nullable=False, index=True)
-    fullname = db.Column(db.String(255), nullable=False, index=True)
-    password = db.Column(db.String(120), nullable=False)
-    type = db.Column(db.String(120), nullable=False, index=True)
-    token = db.Column(db.String(32), index=True, unique=True)
-
-    evaluations = relationship('Evaluation', backref="evaluator", lazy='dynamic')
-    tasks = relationship('Task', backref='user', lazy='dynamic')
-
-    def __repr__(self):
-        return '{}'.format(self.username)
-
-    def get_token(self):
-        self.token = base64.b64encode(os.urandom(24)).decode('utf-8')
-        db.session.add(self)
-        return self.token
-
-    @staticmethod
-    def check_token(token):
-        if RevokedToken.is_token_blacklisted(token):
-            return None
-        user = User.query.filter_by(token=token).first()
-        if user is None:
-            return None
-        return user
-
-    def revoke_token(self):
-        revoked_token = RevokedToken(token=self.token)
-        db.session.add(revoked_token)
-
-    def save_to_db(self):
-        db.session.add(self)
-
-    def update_to_db(self, username, fullname, type):
-        db.session.query(User).filter_by(username=self.username) \
-            .update({'username': username, 'fullname': fullname, 'type': type})
-
-    @staticmethod
-    def generate_hash(password):
-        return sha256.hash(password)
-
-    @staticmethod
-    def verify_hash(password, hash):
-        return sha256.verify(password, hash)
-
-    @classmethod
-    def find_by_username(cls, username):
-        return db.session.query(User).filter_by(username=username).first()
-
-    @classmethod
-    def change_password(cls, username, new_password):
-        db.session.query(User).filter_by(username=username) \
-            .update({'password': cls.generate_hash(new_password)})
-
-    def launch_task(self, name, description, *args):
-        rq_job = current_app.task_queue.enqueue('app.tasks.' + name, *args)
-        task = Task(id=rq_job.get_id(), name=name, description=description, user=self)
-        db.session.add(task)
-        return task
-
-    def get_tasks_in_progress(self):
-        return db.session.query(Task).filter_by(user=self, complete=False).all()
-
-    def get_task_in_progress(self, name):
-        return db.session.query(Task).filter_by(name=name, user=self,
-                                                complete=False).first()
-
-
-class UserSchema(ma.Schema):
-    class Meta:
-        model = User
-        # Fields to expose
-        fields = ('username', 'fullname', 'type')
-
-
 class Task(db.Model):
     __tablename__ = 'tasks'
 
@@ -123,120 +45,6 @@ class Task(db.Model):
     def get_progress(self):
         job = self.get_rq_job()
         return job.meta.get('progress', 0) if job is not None else 100
-
-
-class RevokedToken(db.Model):
-    __tablename__ = 'revoked_tokens'
-
-    id = db.Column(db.Integer, primary_key=True)
-    token = db.Column(db.String(120))
-
-    def add(self):
-        db.session.add(self)
-
-    @classmethod
-    def is_token_blacklisted(cls, token):
-        try:
-            token = db.session.query(RevokedToken).filter_by(token=token).one()
-            return token is not None
-        except NoResultFound:
-            return False
-
-
-class Patient(db.Model):
-    __tablename__ = 'patients'
-
-    def __repr__(self):
-        return '{}'.format(self.name)
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(255), nullable=False)
-    birth = db.Column(db.Date, nullable=False)
-    sex = db.Column(db.String(1))
-    school = db.Column(db.String(255), nullable=False)
-    school_type = db.Column(db.String(3))
-    caregiver = db.Column(db.String(255))  # responsavel
-    phone = db.Column(db.String(255))
-    city = db.Column(db.String(255), nullable=False)
-    state = db.Column(db.String(2), nullable=False)
-    address = db.Column(db.String(255))
-    created_at = db.Column(db.Date, nullable=False, default=get_date_br)
-
-    evaluation = relationship("Evaluation", backref="patient")
-
-    def save_to_db(self):
-        db.session.add(self)
-        db.session.commit()
-
-    def update_to_db(self, name, birth, sex, school, school_type, caregiver, phone, city, state, address):
-        db.session.query(Patient).filter_by(id=self.id) \
-            .update({
-            'name': name,
-            'birth': birth,
-            'sex': sex,
-            'school': school,
-            'school_type': school_type,
-            'caregiver': caregiver,
-            'phone': phone,
-            'city': city,
-            'state': state,
-            'address': address,
-        })
-        db.session.commit()
-
-    @classmethod
-    def find_by_name(cls, name):
-        return db.session.query(Patient).filter_by(name=name).first()
-
-    @classmethod
-    def find_by_id(cls, id):
-        return db.session.query(Patient).filter_by(id=id).first()
-
-    @classmethod
-    def return_all(cls):
-        return db.session.query(Patient).all()
-
-
-class Word(db.Model):
-    __tablename__ = 'words'
-
-    def __repr__(self):
-        return '{}'.format(self.word)
-
-    def orderdefinition(self):
-        return func.query(db.session.count(Word.id)).scalar() + 1
-
-    id = db.Column(db.Integer, primary_key=True)
-    word = db.Column(db.String(255), nullable=False, unique=True)
-    tip = db.Column(db.String(255))
-    order = db.Column(db.Integer, default=orderdefinition)
-
-    transcription = relationship("WordTranscription", backref="word", cascade="all, delete")
-    evaluations = relationship('Evaluation', secondary='word_evaluation')
-
-    def save_to_db(self):
-        db.session.add(self)
-        db.session.commit()
-
-    def update_to_db(self, word, tip):
-        db.session.query(Word) \
-            .filter_by(word=self.word) \
-            .update({'word': word, 'tip': tip})
-        db.session.commit()
-
-    @classmethod
-    def delete_by_word(cls, word):
-        word_delete = db.session.query(Word).filter_by(word=word).first()
-        db.delete(word_delete)
-        db.session.commit()
-
-    @classmethod
-    def find_by_word(cls, word):
-        return db.session.query(Word).filter_by(word=word).first()
-
-    @classmethod
-    def return_all(cls):
-        return db.session.query(Word).all()
 
 
 class WordTranscription(db.Model):
@@ -284,40 +92,13 @@ class WordTranscription(db.Model):
         return {'transcriptions': list(map(lambda x: to_json(x), db.session.query(WordTranscription).all()))}
 
 
-class Evaluation(db.Model):
-    __tablename__ = 'evaluations'
+class WordTranscriptionSchema(ma.ModelSchema):
+    word = fields.Nested('WordSchema')
 
-    def __repr__(self):
-        return '{}'.format(self.id)
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    date = db.Column(db.Date, nullable=False, default=get_date_br)
-    type = db.Column(db.String(1), nullable=False)
-
-    patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False)
-    # patient = relationship("Patient", back_populates="evaluation")
-
-    evaluator_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    # evaluator = relationship("User", back_populates="evaluations")
-
-    words = relationship("Word", secondary='word_evaluation')
-
-    def save_to_db(self):
-        db.session.add(self)
-        db.session.commit()
-
-    def update_to_db(self, type, patient_id):
-        db.session.query(Evaluation) \
-            .filter_by(id=self.id) \
-            .update({
-            'type': type,
-            'patient_id': patient_id
-        })
-        db.session.commit()
-
-    @classmethod
-    def find_all_user_evaluations(cls, user_id):
-        return db.session.query(Evaluation).filter_by(id=user_id).first()
+    class Meta:
+        model = WordTranscription
+        fields = ('id', 'transcription', 'word')
+        sqla_session = db.session
 
 
 class WordEvaluation(db.Model):
@@ -401,3 +182,249 @@ class WordEvaluation(db.Model):
     @classmethod
     def find_evaluations_by_id(cls, evaluation_id):
         return db.session.query(WordEvaluation).filter_by(evaluation_id=evaluation_id).all()
+
+
+class Evaluation(db.Model):
+    __tablename__ = 'evaluations'
+
+    def __repr__(self):
+        return '{}'.format(self.id)
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    date = db.Column(db.Date, nullable=False, default=get_date_br)
+    type = db.Column(db.String(1), nullable=False)
+
+    patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False)
+    # patient = relationship("Patient", back_populates="evaluation")
+
+    evaluator_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    # evaluator = relationship("User", back_populates="evaluations")
+
+    words = relationship("Word", secondary='word_evaluation')
+
+    def save_to_db(self):
+        db.session.add(self)
+        db.session.commit()
+
+    def update_to_db(self, type, patient_id):
+        db.session.query(Evaluation) \
+            .filter_by(id=self.id) \
+            .update({
+            'type': type,
+            'patient_id': patient_id
+        })
+        db.session.commit()
+
+    @classmethod
+    def find_all_user_evaluations(cls, user_id):
+        return db.session.query(Evaluation).filter_by(id=user_id).first()
+
+
+class Word(db.Model):
+    __tablename__ = 'words'
+
+    def __repr__(self):
+        return '{}'.format(self.word)
+
+    def orderdefinition(self):
+        return db.session.query(func.count('*')).select_from(Word).scalar() + 1
+
+    id = db.Column(db.Integer, primary_key=True)
+    word = db.Column(db.String(255), nullable=False, unique=True)
+    tip = db.Column(db.String(255))
+    order = db.Column(db.Integer, default=orderdefinition)
+
+    transcription = relationship("WordTranscription", backref="word", cascade="all, delete")
+    evaluations = relationship('Evaluation', secondary='word_evaluation')
+
+    def save_to_db(self):
+        db.session.add(self)
+        db.session.commit()
+
+    def update_to_db(self, word, tip):
+        db.session.query(Word) \
+            .filter_by(word=self.word) \
+            .update({'word': word, 'tip': tip})
+        db.session.commit()
+
+    @classmethod
+    def delete_by_word(cls, word):
+        word_delete = db.session.query(Word).filter_by(word=word).first()
+        db.delete(word_delete)
+        db.session.commit()
+
+    @classmethod
+    def find_by_word(cls, word):
+        return db.session.query(Word).filter_by(word=word).first()
+
+    @classmethod
+    def return_all(cls):
+        return db.session.query(Word).all()
+
+
+class WordSchema(ma.ModelSchema):
+    transcriptions = fields.Nested('WordTranscriptionSchema', many=True)
+
+    class Meta:
+        model = Word
+        fields = ('id', 'word', 'tip', 'order', 'transcriptions')
+        sqla_session = db.session
+
+
+class User(db.Model):
+    __tablename__ = 'users'
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    fullname = db.Column(db.String(255), nullable=False, index=True)
+    password = db.Column(db.String(120), nullable=False)
+    type = db.Column(db.String(120), nullable=False, index=True)
+    token = db.Column(db.String(32), index=True, unique=True)
+
+    evaluations = relationship('Evaluation', backref="evaluator", lazy='dynamic')
+    tasks = relationship('Task', backref='user', lazy='dynamic')
+
+    def __repr__(self):
+        return '{}'.format(self.username)
+
+    def get_token(self):
+        self.token = base64.b64encode(os.urandom(24)).decode('utf-8')
+        db.session.add(self)
+        return self.token
+
+    @staticmethod
+    def check_token(token):
+        if RevokedToken.is_token_blacklisted(token):
+            return None
+        user = User.query.filter_by(token=token).first()
+        if user is None:
+            return None
+        return user
+
+    def revoke_token(self):
+        revoked_token = RevokedToken(token=self.token)
+        db.session.add(revoked_token)
+
+    def save_to_db(self):
+        db.session.add(self)
+
+    def update_to_db(self, username, fullname, type):
+        db.session.query(User).filter_by(username=self.username) \
+            .update({'username': username, 'fullname': fullname, 'type': type})
+
+    @staticmethod
+    def generate_hash(password):
+        return sha256.hash(password)
+
+    @staticmethod
+    def verify_hash(password, hash):
+        return sha256.verify(password, hash)
+
+    @classmethod
+    def find_by_username(cls, username):
+        return db.session.query(User).filter_by(username=username).first()
+
+    @classmethod
+    def change_password(cls, username, new_password):
+        db.session.query(User).filter_by(username=username) \
+            .update({'password': cls.generate_hash(new_password)})
+
+    def launch_task(self, name, description, *args):
+        rq_job = current_app.task_queue.enqueue('app.tasks.' + name, *args)
+        task = Task(id=rq_job.get_id(), name=name, description=description, user=self)
+        db.session.add(task)
+        return task
+
+    def get_tasks_in_progress(self):
+        return db.session.query(Task).filter_by(user=self, complete=False).all()
+
+    def get_task_in_progress(self, name):
+        return db.session.query(Task).filter_by(name=name, user=self,
+                                                complete=False).first()
+
+
+class UserSchema(ma.ModelSchema):
+    class Meta:
+        model = User
+        # Fields to expose
+        fields = ('username', 'fullname', 'type')
+        sqla_session = db.session
+
+
+class RevokedToken(db.Model):
+    __tablename__ = 'revoked_tokens'
+
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(120))
+
+    def add(self):
+        db.session.add(self)
+
+    @classmethod
+    def is_token_blacklisted(cls, token):
+        try:
+            token = db.session.query(RevokedToken).filter_by(token=token).one()
+            return token is not None
+        except NoResultFound:
+            return False
+
+
+class Patient(db.Model):
+    __tablename__ = 'patients'
+
+    def __repr__(self):
+        return '{}'.format(self.name)
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    birth = db.Column(db.Date, nullable=False)
+    sex = db.Column(db.String(1))
+    school = db.Column(db.String(255), nullable=False)
+    school_type = db.Column(db.String(3))
+    caregiver = db.Column(db.String(255))  # responsavel
+    phone = db.Column(db.String(255))
+    city = db.Column(db.String(255), nullable=False)
+    state = db.Column(db.String(2), nullable=False)
+    address = db.Column(db.String(255))
+    created_at = db.Column(db.Date, nullable=False, default=get_date_br)
+
+    evaluation = relationship("Evaluation", backref="patient")
+
+    def save_to_db(self):
+        db.session.add(self)
+        db.session.commit()
+
+    def update_to_db(self, name, birth, sex, school, school_type, caregiver, phone, city, state, address):
+        db.session.query(Patient).filter_by(id=self.id) \
+            .update({
+            'name': name,
+            'birth': birth,
+            'sex': sex,
+            'school': school,
+            'school_type': school_type,
+            'caregiver': caregiver,
+            'phone': phone,
+            'city': city,
+            'state': state,
+            'address': address,
+        })
+        db.session.commit()
+
+    @classmethod
+    def find_by_name(cls, name):
+        return db.session.query(Patient).filter_by(name=name).first()
+
+    @classmethod
+    def find_by_id(cls, id):
+        return db.session.query(Patient).filter_by(id=id).first()
+
+    @classmethod
+    def return_all(cls):
+        return db.session.query(Patient).all()
+
+
+class PatientSchema(ma.ModelSchema):
+    class Meta:
+        fields = ('name', 'birth', 'sex', 'school', 'school_type', 'caregiver', 'phone', 'city', 'state', 'address')
+        model = Patient
+        sqla_session = db.session
