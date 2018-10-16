@@ -1,6 +1,80 @@
-2018-10-12 23:22:53,847 INFO: Paciente Gabriel criado com sucesso [in /home/anthony/workspace/flask-speech-api/app/api/patients.py:48]
-2018-10-12 23:23:41,441 INFO: Paciente Gabriel Moreira criado com sucesso [in /home/anthony/workspace/flask-speech-api/app/api/patients.py:48]
-2018-10-12 23:24:43,877 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
-2018-10-12 23:24:43,948 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
-2018-10-12 23:24:44,103 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
-2018-10-12 23:24:44,153 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:11:01,559 INFO: TRANSCRIPTIONS ---->>>> [<WordTranscription 2>] [in /home/anthony/workspace/flask-speech-api/app/api/words.py:59]
+2018-10-15 22:11:14,134 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:11:14,380 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:11:14,469 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:11:14,516 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:11:15,184 INFO: WORD ID ---->>>> 2 [in /home/anthony/workspace/flask-speech-api/app/api/words.py:55]
+2018-10-15 22:11:15,185 INFO: TRANSCRIPTIONS ---->>>> [<WordTranscription 2>] [in /home/anthony/workspace/flask-speech-api/app/api/words.py:59]
+2018-10-15 22:12:19,315 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:12:19,437 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:12:19,634 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:12:19,657 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:12:20,735 INFO: WORD ID ---->>>> 2 [in /home/anthony/workspace/flask-speech-api/app/api/words.py:55]
+2018-10-15 22:12:20,738 INFO: TRANSCRIPTIONS ---->>>> [<WordTranscription 2>] [in /home/anthony/workspace/flask-speech-api/app/api/words.py:59]
+2018-10-15 22:12:20,738 ERROR: Exception on /api/word/casa [GET] [in /home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py:1560]
+Traceback (most recent call last):
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1982, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1614, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1517, in handle_user_exception
+    reraise(exc_type, exc_value, tb)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/_compat.py", line 33, in reraise
+    raise value
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1612, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask/app.py", line 1598, in dispatch_request
+    return self.view_functions[rule.endpoint](**req.view_args)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/flask_httpauth.py", line 104, in decorated
+    return f(*args, **kwargs)
+  File "/home/anthony/workspace/flask-speech-api/app/api/words.py", line 61, in word_info_change
+    word_output = word_schema.dump(word_data).data
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/marshmallow/schema.py", line 496, in dump
+    self._update_fields(processed_obj, many=many)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/marshmallow/schema.py", line 765, in _update_fields
+    ret = self.__filter_fields(field_names, obj, many=many)
+  File "/home/anthony/workspace/flask-speech-api/venv/lib/python3.6/site-packages/marshmallow/schema.py", line 820, in __filter_fields
+    obj_prototype = next(iter(obj))
+TypeError: 'Word' object is not iterable
+2018-10-15 22:12:20,755 WARNING: Sorry, algo de errado não esta certo [in /home/anthony/workspace/flask-speech-api/app/api/errors.py:9]
+2018-10-15 22:12:49,984 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:12:50,014 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:12:50,234 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:12:50,260 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:12:51,865 INFO: WORD ID ---->>>> 2 [in /home/anthony/workspace/flask-speech-api/app/api/words.py:55]
+2018-10-15 22:12:51,867 INFO: TRANSCRIPTIONS ---->>>> [<WordTranscription 2>] [in /home/anthony/workspace/flask-speech-api/app/api/words.py:59]
+2018-10-15 22:13:38,675 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:13:38,831 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:13:38,911 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:13:38,975 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:13:39,864 INFO: WORD ID ---->>>> 2 [in /home/anthony/workspace/flask-speech-api/app/api/words.py:55]
+2018-10-15 22:13:39,866 INFO: TRANSCRIPTIONS ---->>>> [<WordTranscription 2>] [in /home/anthony/workspace/flask-speech-api/app/api/words.py:59]
+2018-10-15 22:13:41,414 INFO: WORD ID ---->>>> 2 [in /home/anthony/workspace/flask-speech-api/app/api/words.py:55]
+2018-10-15 22:13:41,416 INFO: TRANSCRIPTIONS ---->>>> [<WordTranscription 2>] [in /home/anthony/workspace/flask-speech-api/app/api/words.py:59]
+2018-10-15 22:13:42,193 INFO: WORD ID ---->>>> 2 [in /home/anthony/workspace/flask-speech-api/app/api/words.py:55]
+2018-10-15 22:13:42,194 INFO: TRANSCRIPTIONS ---->>>> [<WordTranscription 2>] [in /home/anthony/workspace/flask-speech-api/app/api/words.py:59]
+2018-10-15 22:18:17,142 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:18:17,178 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:18:17,355 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:18:17,398 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:27:24,324 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:27:24,497 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:27:24,571 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:27:24,657 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:38:35,878 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:38:35,982 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:38:36,057 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:38:36,066 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:40:30,364 INFO: Palavra casinha atualizada com sucesso [in /home/anthony/workspace/flask-speech-api/app/api/words.py:81]
+2018-10-15 22:40:37,656 WARNING: Palavra não encontrada [in /home/anthony/workspace/flask-speech-api/app/api/errors.py:9]
+2018-10-15 22:42:18,259 WARNING: Palavra não encontrada [in /home/anthony/workspace/flask-speech-api/app/api/errors.py:9]
+2018-10-15 22:42:45,213 INFO: Palavra casina atualizada com sucesso [in /home/anthony/workspace/flask-speech-api/app/api/words.py:81]
+2018-10-15 22:43:08,660 WARNING: Palavra não encontrada [in /home/anthony/workspace/flask-speech-api/app/api/errors.py:9]
+2018-10-15 22:43:38,032 INFO: Palavra casa atualizada com sucesso [in /home/anthony/workspace/flask-speech-api/app/api/words.py:81]
+2018-10-15 22:44:43,294 ERROR: Error FROM expression expected [in /home/anthony/workspace/flask-speech-api/app/api/words.py:99]
+2018-10-15 22:45:47,051 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:45:47,247 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:45:47,339 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:45:47,436 INFO: Speech API startup [in /home/anthony/workspace/flask-speech-api/app/__init__.py:39]
+2018-10-15 22:45:53,127 INFO: Palavra casa deletada com sucesso [in /home/anthony/workspace/flask-speech-api/app/api/words.py:94]
+2018-10-15 22:45:57,643 WARNING: Palavra não encontrada [in /home/anthony/workspace/flask-speech-api/app/api/errors.py:9]

@@ -55,9 +55,6 @@ class WordTranscription(db.Model):
     type = db.Column(db.Integer)
     word_id = db.Column(db.Integer, db.ForeignKey('words.id', ondelete=u'CASCADE'))
 
-    def __repr__(self):
-        return '{}'.format(self.transcription)
-
     def save_to_db(self):
         db.session.add(self)
         db.session.commit()
@@ -93,11 +90,9 @@ class WordTranscription(db.Model):
 
 
 class WordTranscriptionSchema(ma.ModelSchema):
-    word = fields.Nested('WordSchema')
-
     class Meta:
         model = WordTranscription
-        fields = ('id', 'transcription', 'word')
+        fields = ('id', 'transcription')
         sqla_session = db.session
 
 
@@ -250,7 +245,7 @@ class Word(db.Model):
     @classmethod
     def delete_by_word(cls, word):
         word_delete = db.session.query(Word).filter_by(word=word).first()
-        db.delete(word_delete)
+        db.session.delete(word_delete)
         db.session.commit()
 
     @classmethod
@@ -263,11 +258,11 @@ class Word(db.Model):
 
 
 class WordSchema(ma.ModelSchema):
-    transcriptions = fields.Nested('WordTranscriptionSchema', many=True)
+    transcriptions = fields.Nested('WordTranscriptionSchema', many=True, default=None)
 
     class Meta:
         model = Word
-        fields = ('id', 'word', 'tip', 'order', 'transcriptions')
+        fields = ('id', 'word', 'tip', 'order')
         sqla_session = db.session
 
 

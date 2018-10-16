@@ -3,7 +3,7 @@ from app import db
 from app.api.auth import token_auth
 from app.api.errors import bad_request
 from app.helpers import validate_date, is_in_choices
-from app.models import Word, WordSchema
+from app.models import Word, WordSchema, WordTranscriptionSchema, WordTranscription
 from app.api import bp
 from flask import current_app
 
@@ -40,23 +40,55 @@ def word_registration():
 @token_auth.login_required
 def word_info_change(word=None):
     if not word:
-        return bad_request('Palavra não informado')
+        return bad_request('Palavra não informada')
 
-    word = Word.find_by_word(word)
+    word_data = Word.find_by_word(word)
 
-    if not word:
-        return bad_request('Palavra não encontrado')
+    if not word_data:
+        return bad_request('Palavra não encontrada')
 
     if request.method == 'GET':
 
         word_schema = WordSchema()
-        output = word_schema.dump(word).data
-        return jsonify(output), 200
+        transcriptions_schema = WordTranscriptionSchema(many=True)
 
-    elif request.method == 'PUT': # TODO
-        return 'PUT'
+        transcriptions = WordTranscription.find_by_word_id(word_id=word_data.id)
+
+        word_output = word_schema.dump(word_data).data
+        transcriptions_output = transcriptions_schema.dump(transcriptions).data
+        return jsonify({
+            'data': word_output,
+            'transcriptions': transcriptions_output
+        }), 200
+
+    elif request.method == 'PUT':
+
+        data = request.get_json(silent=True) or {}
+
+        if 'word' not in data:
+            return bad_request('O campo word é obrigatório')
+
+        new_word = Word.find_by_word(data['word'])
+
+        if new_word:
+            if (new_word.word != word_data.word) and (new_word.id != word_data.id):
+                current_app.logger.warn('Palavra {} já existe'.format(data['word']))
+                return jsonify({'message': 'Palavra {} já existe'.format(data['word'])}), 400
+
+        try:
+            word_data.update_to_db(word=data['word'], tip=data['tip'] if 'tip' in data else None)
+
+            current_app.logger.info('Palavra {} atualizada com sucesso'.format(data['word']))
+            return jsonify({
+                       'message': 'Palavra {} atualizada com sucesso'.format(data['word']),
+                       'route': '/api/word/{}'.format(word_data.word)
+                   }), 201
+        except Exception as e:
+            current_app.logger.error('Error {}'.format(e))
+            return jsonify({'message': 'Algo de errado não está certo, não foi possível atualizar sua palavra'}), 500
 
     elif request.method == 'DELETE':
+
         try:
             Word.delete_by_word(word)
             current_app.logger.info('Palavra {} deletada com sucesso'.format(word))
