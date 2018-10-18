@@ -29,4 +29,4 @@ def internal_error(error):
         return errors.error_response(500, 'Sorry, algo de errado não esta certo')
 
 
-from app.api import secret, auth, errors, users, patients, words, transcriptions
+from app.api import secret, auth, errors, users, patients, words, transcriptions, evaluations, tasks

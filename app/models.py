@@ -42,6 +42,26 @@ class Task(db.Model):
             return None
         return rq_job
 
+    @classmethod
+    def get_rq_job_by_id(cls, task_id):
+        try:
+            rq_job = rq.job.Job.fetch(task_id, connection=current_app.redis)
+        except (redis.exceptions.RedisError, rq.exceptions.NoSuchJobError):
+            return None
+        return rq_job
+
+    @classmethod
+    def get_task_by_user(cls, task_id, user):
+        task = db.session.query(Task) \
+            .filter_by(id=task_id) \
+            .filter_by(user_id=user.id) \
+            .first()
+
+        if not task:
+            return None
+
+        return task.get_rq_job()
+
     def get_progress(self):
         job = self.get_rq_job()
         return job.meta.get('progress', 0) if job is not None else 100
@@ -115,7 +135,7 @@ class WordEvaluation(db.Model):
 
     def save_to_db(self):
         db.session.add(self)
-        db.session.commit()
+        # db.session.commit()
 
     def update_to_db(self, transcription_target_id, transcription, repetition, audio_path):
         db.session.query(WordEvaluation) \
@@ -178,6 +198,18 @@ class WordEvaluation(db.Model):
     def find_evaluations_by_id(cls, evaluation_id):
         return db.session.query(WordEvaluation).filter_by(evaluation_id=evaluation_id).all()
 
+    @classmethod
+    def find_word_evaluation_by_id_and_word(cls, evaluation_id, word):
+        return db.session.query(WordEvaluation)\
+            .filter_by(evaluation_id=evaluation_id)\
+            .filter_by(word=word)\
+            .first()
+
+
+class WordEvaluationSchema(ma.Schema):
+    class Meta:
+        model = WordEvaluation
+
 
 class Evaluation(db.Model):
     __tablename__ = 'evaluations'
@@ -212,7 +244,17 @@ class Evaluation(db.Model):
 
     @classmethod
     def find_all_user_evaluations(cls, user_id):
-        return db.session.query(Evaluation).filter_by(id=user_id).first()
+        return db.session.query(Evaluation).filter_by(evaluator_id=user_id).first()
+
+    @classmethod
+    def find_by_id(cls, eval_id):
+        return db.session.query(Evaluation).filter_by(id=eval_id).first()
+
+
+class EvaluationSchema(ma.Schema):
+    class Meta:
+        model = Evaluation
+        fields = ('id', 'date', 'type')
 
 
 class Word(db.Model):
@@ -257,13 +299,11 @@ class Word(db.Model):
         return db.session.query(Word).all()
 
 
-class WordSchema(ma.ModelSchema):
-    transcriptions = fields.Nested('WordTranscriptionSchema', many=True, default=None)
+class WordSchema(ma.Schema):
 
     class Meta:
         model = Word
         fields = ('id', 'word', 'tip', 'order')
-        sqla_session = db.session
 
 
 class User(db.Model):
@@ -338,12 +378,12 @@ class User(db.Model):
                                                 complete=False).first()
 
 
-class UserSchema(ma.ModelSchema):
+class UserSchema(ma.Schema):
     class Meta:
         model = User
         # Fields to expose
         fields = ('username', 'fullname', 'type')
-        sqla_session = db.session
+
 
 
 class RevokedToken(db.Model):
@@ -418,8 +458,7 @@ class Patient(db.Model):
         return db.session.query(Patient).all()
 
 
-class PatientSchema(ma.ModelSchema):
+class PatientSchema(ma.Schema):
     class Meta:
-        fields = ('name', 'birth', 'sex', 'school', 'school_type', 'caregiver', 'phone', 'city', 'state', 'address')
+        fields = ('id', 'name', 'birth', 'sex', 'school', 'school_type', 'caregiver', 'phone', 'city', 'state', 'address')
         model = Patient
-        sqla_session = db.session

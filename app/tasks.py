@@ -1,11 +1,8 @@
-from time import sleep
-
 import matplotlib
 from sklearn.datasets import load_svmlight_file
 from sklearn import tree
 from app.helpers import generate_spectrogram, generate_testing_file
 from app import create_app, db
-from app.models import User
 
 app = create_app()
 app.app_context().push()
@@ -29,15 +26,14 @@ def ml_transcribe_audio(evaluation_id, word_id, wd, wd_audio_path):
 
     app.logger.info("ML API -> Predicted {}".format(y_pred))
 
-    db.session.execute("UPDATE word_evaluation SET ml_eval=:new_value WHERE word_id=:param1 AND evaluation_id=:param2",
+    try:
+        db.session.execute("UPDATE word_evaluation SET ml_eval=:new_value WHERE word_id=:param1 AND evaluation_id=:param2",
                        {"param1": evaluation_id, "param2": word_id, "new_value": bool(y_pred)})
-    db.session.commit()
+        db.session.commit()
+        return y_pred
+    except Exception as e:
+        app.logger.info("ML API -> Error on update result {}".format(e))
+        db.session.rollback()
+        return False
 
-    return y_pred
-    # return word_id
 
-
-def test_task(user_id):
-    user = User.query.filter_by(id=user_id).first()
-    user.update_to_db('anthony', 'TESTE LOCAO', 'anonymous')
-    return True

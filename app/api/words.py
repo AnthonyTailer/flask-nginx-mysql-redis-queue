@@ -1,9 +1,13 @@
-from flask import request, jsonify
+import os
+from flask import request, jsonify, g
+from werkzeug.utils import secure_filename
+
 from app import db
 from app.api.auth import token_auth
 from app.api.errors import bad_request
-from app.helpers import validate_date, is_in_choices
-from app.models import Word, WordSchema, WordTranscriptionSchema, WordTranscription
+from app.helpers import allowed_file, generate_hash_from_filename
+from app.models import Word, WordSchema, WordTranscriptionSchema, WordTranscription, Evaluation, WordEvaluation, \
+    WordEvaluationSchema
 from app.api import bp
 from flask import current_app
 
@@ -80,9 +84,9 @@ def word_info_change(word=None):
 
             current_app.logger.info('Palavra {} atualizada com sucesso'.format(data['word']))
             return jsonify({
-                       'message': 'Palavra {} atualizada com sucesso'.format(data['word']),
-                       'route': '/api/word/{}'.format(word_data.word)
-                   }), 201
+                'message': 'Palavra {} atualizada com sucesso'.format(data['word']),
+                'route': '/api/word/{}'.format(word_data.word)
+            }), 201
         except Exception as e:
             current_app.logger.error('Error {}'.format(e))
             return jsonify({'message': 'Algo de errado não está certo, não foi possível atualizar sua palavra'}), 500
@@ -98,3 +102,121 @@ def word_info_change(word=None):
         except Exception as e:
             current_app.logger.error('Error {}'.format(e))
             return jsonify({'message': 'Algo de errado não está certo, não foi possível deletar sua palavra'}), 500
+
+
+@bp.route('/word/<string:word>/evaluation/<int:evaluation_id>', methods=['GET', 'POST'])
+@token_auth.login_required
+def word_evaluation(word=None, evaluation_id=None):
+    if not word:
+        return bad_request('Palavra não informada')
+
+    if not evaluation_id:
+        return bad_request('Avaliação não informada')
+
+    evaluation = Evaluation.find_by_id(evaluation_id)
+
+    if not evaluation:
+        return jsonify({'message': 'Avaliação não encontrada'}), 404
+
+    if evaluation.evaluator_id != g.current_user.id:
+        return jsonify({'message': 'Avaliação não encontrada'}), 404
+
+    word_data = Word.find_by_word(word)
+
+    if not word_data:
+        return bad_request('Palavra não encontrada')
+
+    if request.method == 'POST':
+
+        if 'file' not in request.files:
+            return bad_request('Arquivo de audio não fornecido')
+
+        audio = request.files['file']
+
+        if audio.filename == '':
+            return bad_request('Arquivo de audio não selecionado')
+
+        data = request.form or {}
+
+        if 'transcription_target_id' not in data or 'transcription_eval' not in data:
+            return bad_request('Os campos transcription_target_id e transcription_eval são obrigatórios')
+
+        target_transc = WordTranscription.find_by_transcription_id(data['transcription_target_id'])
+
+        if not target_transc:
+            return bad_request('Transcrição alvo não encontrada')
+
+        if audio and allowed_file(audio.filename):
+            filename = secure_filename(audio.filename)
+
+            full_path = os.path.join(
+                current_app.config['UPLOAD_FOLDER'],
+                str(generate_hash_from_filename(filename) + '.' + filename.rsplit('.', 1)[1].lower())
+            )
+
+            try:
+                audio.save(full_path)
+            except Exception as e:
+                current_app.logger.error('POST WORD_EVALUATION  SAVE AUDIO -> {}'.format(e))
+                return jsonify({'message': 'Algo de errado não está certo, {}'.format(e)}), 500
+            else:
+
+                new_word_eval = WordEvaluation(
+                    evaluation_id=evaluation.id,
+                    word_id=word_data.id,
+                    transcription_target_id=target_transc.id,
+                    transcription_eval=data['transcription_eval'] if 'transcription_eval' in data else None,
+                    repetition=data['repetition'] if 'repetition' in data else False,
+                    audio_path=full_path
+                )
+
+                try:
+
+                    current_user = g.current_user
+
+                    new_word_eval.save_to_db()
+
+                    # current_app.logger.info('Avaliação do audio criada com sucesso')
+                    # task1 = q.enqueue(new_word_eval.google_transcribe_audio, full_path)
+                    #  GOOGLE API AUDIO EVALUATION
+
+                    # ML AUDIO EVALUATION
+                    task2 = current_user.launch_task(
+                        'ml_transcribe_audio',
+                        'Audio Evaluation',
+                        evaluation.id,
+                        word_data.id,
+                        word,
+                        full_path
+                    )
+                    # job2 = task2.get_rq_job()
+                    # task2 = q.enqueue(current_app, ml_transcribe_audio, new_word_eval.evaluation_id,
+                    #  new_word_eval.word_id, data['word'], full_path)
+                    db.session.commit()
+                    return jsonify({
+                        'message': 'Avaliação do audio criada com sucesso e está sendo processada...',
+                        'data': {
+                            # 'task_api_id': task1.get_id(),
+                            # 'url_api': 'api/task/' + str(task1.get_id()),
+                            'task_ml_id': task2.id,
+                            'url_ml': 'api/task/' + str(task2.id),
+                        }
+                    }), 201
+                except Exception as e:
+                    db.session.rollback()
+                    current_app.logger.error('POST WORD_EVALUATION -> {}'.format(e))
+                    return jsonify({'message': 'Algo de errado não está certo, {}'.format(e)}), 500
+        else:
+            return jsonify({'message': 'Arquivo de audio não permitido'}), 422
+
+    if request.method == 'GET':
+
+        word_eval = WordEvaluation.find_word_evaluation_by_id_and_word(evaluation_id, word)
+
+        if not word_eval:
+            return bad_request('avaliação não encontrada')
+
+        word_eval_schema = WordEvaluationSchema()
+        eval_output = word_eval_schema.dump(word_eval).data
+
+        return jsonify(eval_output)

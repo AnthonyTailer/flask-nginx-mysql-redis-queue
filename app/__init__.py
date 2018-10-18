@@ -71,12 +71,6 @@ def create_app(config_class=BaseConfig):
 
     # api.add_resource(resources.SecretResource, '/api/secret')
 
-    # @api.representation('application/json')
-    # def output_json(data, code, headers=None):
-    #     resp = make_response(json.dumps(data), code)
-    #     resp.headers.extend(headers or {})
-    #     return resp
-
     return app
 
 

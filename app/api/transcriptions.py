@@ -1,8 +1,6 @@
 from flask import request, jsonify
-from app import db
 from app.api.auth import token_auth
 from app.api.errors import bad_request
-from app.helpers import validate_date, is_in_choices
 from app.models import WordTranscriptionSchema, WordTranscription, Word
 from app.api import bp
 from flask import current_app
@@ -32,7 +30,7 @@ def word_transcription_registration():
         current_app.logger.info('Transcrição de {} criada com sucesso'.format(data['word']))
         return jsonify({
             'message': 'Transcrição de {} criada com sucesso'.format(data['word']),
-            'route': '/api/transcription/{}'.format(new_transcription.id)
+            'route': '/api/word/transcription/{}'.format(new_transcription.id)
         }), 201
     except Exception as e:
         current_app.logger.error('Error {}'.format(e))
@@ -52,7 +50,7 @@ def word_transcription_info_change(transcription_id=None):
 
     if request.method == 'GET':
 
-        transcriptions_schema = WordTranscriptionSchema(many=True)
+        transcriptions_schema = WordTranscriptionSchema()
         transcriptions_output = transcriptions_schema.dump(transc).data
         return jsonify(transcriptions_output), 200
 
