@@ -161,13 +161,18 @@ def word_evaluation(word=None, evaluation_id=None):
                 return jsonify({'message': 'Algo de errado não está certo, {}'.format(e)}), 500
             else:
 
+                therapist_eval = None
+                if 'transcription_eval' in data:
+                    therapist_eval = data['transcription_eval'] == target_transc.transcription
+
                 new_word_eval = WordEvaluation(
                     evaluation_id=evaluation.id,
                     word_id=word_data.id,
                     transcription_target_id=target_transc.id,
                     transcription_eval=data['transcription_eval'] if 'transcription_eval' in data else None,
                     repetition=data['repetition'] if 'repetition' in data else False,
-                    audio_path=full_path
+                    audio_path=full_path,
+                    therapist_eval=therapist_eval
                 )
 
                 try:
@@ -175,10 +180,17 @@ def word_evaluation(word=None, evaluation_id=None):
                     current_user = g.current_user
 
                     new_word_eval.save_to_db()
+                    db.session.commit()
 
-                    # current_app.logger.info('Avaliação do audio criada com sucesso')
-                    # task1 = q.enqueue(new_word_eval.google_transcribe_audio, full_path)
                     #  GOOGLE API AUDIO EVALUATION
+                    task1 = current_user.launch_task(
+                        'google_transcribe_audio',
+                        'Audio Evaluation with Google API',
+                        evaluation.id,
+                        word_data.id,
+                        word,
+                        full_path
+                    )
 
                     # ML AUDIO EVALUATION
                     task2 = current_user.launch_task(
@@ -189,21 +201,18 @@ def word_evaluation(word=None, evaluation_id=None):
                         word,
                         full_path
                     )
-                    # job2 = task2.get_rq_job()
-                    # task2 = q.enqueue(current_app, ml_transcribe_audio, new_word_eval.evaluation_id,
-                    #  new_word_eval.word_id, data['word'], full_path)
-                    db.session.commit()
                     return jsonify({
                         'message': 'Avaliação do audio criada com sucesso e está sendo processada...',
                         'data': {
-                            # 'task_api_id': task1.get_id(),
-                            # 'url_api': 'api/task/' + str(task1.get_id()),
+                            'task_api_id': task1.id,
+                            'url_api': 'api/task/' + str(task1.id),
                             'task_ml_id': task2.id,
                             'url_ml': 'api/task/' + str(task2.id),
                         }
                     }), 201
                 except Exception as e:
                     db.session.rollback()
+                    audio.delete(full_path)
                     current_app.logger.error('POST WORD_EVALUATION -> {}'.format(e))
                     return jsonify({'message': 'Algo de errado não está certo, {}'.format(e)}), 500
         else:
@@ -218,5 +227,4 @@ def word_evaluation(word=None, evaluation_id=None):
 
         word_eval_schema = WordEvaluationSchema()
         eval_output = word_eval_schema.dump(word_eval).data
-
         return jsonify(eval_output)

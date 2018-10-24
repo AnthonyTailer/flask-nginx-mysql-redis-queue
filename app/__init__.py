@@ -9,10 +9,12 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from logging.handlers import RotatingFileHandler
 from flask_marshmallow import Marshmallow
+from flask_cors import CORS
 
 db = SQLAlchemy()
 migrate = Migrate()
 ma = Marshmallow()
+cors = CORS()
 
 
 def create_app(config_class=BaseConfig):
@@ -22,6 +24,7 @@ def create_app(config_class=BaseConfig):
     db.init_app(app)
     migrate.init_app(app, db)
     ma.init_app(app)
+    cors.init_app(app)
 
     app.redis = Redis.from_url(app.config['REDIS_URL'])
     app.task_queue = rq.Queue('api-tasks', connection=app.redis)

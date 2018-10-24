@@ -22,7 +22,8 @@ def word_transcription_registration():
 
     new_transcription = WordTranscription(
         word_id=word.id,
-        transcription=str(data['transcription']).strip()
+        transcription=str(data['transcription']).strip(),
+        type=data['type'] if 'type' in data else None
     )
     try:
         new_transcription.save_to_db()

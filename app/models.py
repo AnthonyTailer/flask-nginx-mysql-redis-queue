@@ -71,18 +71,18 @@ class WordTranscription(db.Model):
     __tablename__ = 'transcription'
 
     id = db.Column(db.Integer, primary_key=True)
-    transcription = db.Column(db.String(255), nullable=False, unique=True)
-    type = db.Column(db.Integer)
+    transcription = db.Column(db.String(255), nullable=False)
+    type = db.Column(db.String(1))
     word_id = db.Column(db.Integer, db.ForeignKey('words.id', ondelete=u'CASCADE'))
 
     def save_to_db(self):
         db.session.add(self)
         db.session.commit()
 
-    def update_to_db(self, word_id, transcription):
+    def update_to_db(self, word_id, transcription, type=''):
         db.session.query(WordTranscription) \
             .filter_by(transcription=self.transcription) \
-            .update({'word_id': word_id, 'transcription': transcription})
+            .update({'word_id': word_id, 'transcription': transcription, 'type': type})
         db.session.commit()
 
     def delete_transcription(self):
@@ -104,16 +104,10 @@ class WordTranscription(db.Model):
                 'id': x.id,
                 'transcription': x.transcription,
                 'word': x.word,
+                'type': x.type
             }
 
         return {'transcriptions': list(map(lambda x: to_json(x), db.session.query(WordTranscription).all()))}
-
-
-class WordTranscriptionSchema(ma.ModelSchema):
-    class Meta:
-        model = WordTranscription
-        fields = ('id', 'transcription')
-        sqla_session = db.session
 
 
 class WordEvaluation(db.Model):
@@ -130,8 +124,9 @@ class WordEvaluation(db.Model):
     api_eval = db.Column(db.Boolean)
     therapist_eval = db.Column(db.Boolean)
 
-    evaluation = relationship("Evaluation", backref=backref("word_assoc"))
-    word = relationship("Word", backref=backref("evaluation_assoc"))
+    transcription_target = relationship("WordTranscription", backref="transcription_target")
+    evaluation = relationship("Evaluation", backref=backref("word_assoc"), lazy="joined", join_depth=2)
+    word = relationship("Word", backref=backref("evaluation_assoc"), lazy="joined", join_depth=2)
 
     def save_to_db(self):
         db.session.add(self)
@@ -149,85 +144,50 @@ class WordEvaluation(db.Model):
         })
         db.session.commit()
 
-        # if ml_eval:
-        #     db.execute(
-        #         "UPDATE word_evaluation SET ml_eval=:new_value WHERE word_id=:param1 AND evaluation_id=:param2",
-        #         {"param1": evaluation_id, "param2": word_id, "new_value": bool(ml_eval)}
-        #     )
-
-    # def google_transcribe_audio(self, file):
-    #     r = sr.Recognizer()
-    #     audioFile = sr.AudioFile(file)
-    #     with audioFile as source:
-    #         try:
-    #             evaluation = session.query(WordEvaluationModel) \
-    #                 .filter(WordEvaluationModel.evaluation_id == self.evaluation_id) \
-    #                 .filter(WordEvaluationModel.word_id == self.word_id)
-    #         except Exception as e:
-    #             logger.error("GOOGLE API -> {}".format(e))
-    #         else:
-    #             try:
-    #                 logger.info("GOOGLE API -> Transcribing audio")
-    #                 r.adjust_for_ambient_noise(source, duration=0.5)
-    #                 audio = r.record(source)
-    #                 result = r.recognize_google(audio, language='pt-BR')
-    #
-    #                 evaluation.update({
-    #                     'api_eval': bool(result)
-    #                 })
-    #                 session.commit()
-    #                 return result
-    #
-    #             except sr.UnknownValueError as e:
-    #                 logger.error("GOOGLE API -> {}".format(e))
-    #                 evaluation.update({
-    #                     'api_eval': bool(False)
-    #                 })
-    #                 session.commit()
-    #                 return False
-    #
-    #             except sr.RequestError as e:
-    #                 logger.error("GOOGLE API -> {}".format(e))
-    #                 evaluation.update({
-    #                     'api_eval': bool(False)
-    #                 })
-    #                 session.commit()
-    #                 return False
-
     @classmethod
     def find_evaluations_by_id(cls, evaluation_id):
-        return db.session.query(WordEvaluation).filter_by(evaluation_id=evaluation_id).all()
+        return db.session.query(WordEvaluation).filter(WordEvaluation.evaluation_id == evaluation_id).all()
+
+    @classmethod
+    def get_word_evaluations_by_id(cls, evaluation_id):
+        def to_json(x):
+            current_app.logger.warn(x)
+            return {
+                'word': x[1].word.word,
+                'transcription_eval': x[1].transcription_eval,
+                'transcription_target': x[1].transcription_target.transcription,
+                'repetition': x[1].repetiton,
+
+            }
+
+        wd_evals = db.session.query(Evaluation, WordEvaluation) \
+            .outerjoin(WordEvaluation,
+                       (Evaluation.id == evaluation_id) and (WordEvaluation.evaluation_id == evaluation_id)).all()
+
+        return list(map(lambda x: to_json(x), wd_evals))
 
     @classmethod
     def find_word_evaluation_by_id_and_word(cls, evaluation_id, word):
-        return db.session.query(WordEvaluation)\
-            .filter_by(evaluation_id=evaluation_id)\
-            .filter_by(word=word)\
+        return db.session.query(WordEvaluation) \
+            .filter_by(evaluation_id=evaluation_id) \
+            .filter_by(word=word) \
             .first()
-
-
-class WordEvaluationSchema(ma.Schema):
-    class Meta:
-        model = WordEvaluation
 
 
 class Evaluation(db.Model):
     __tablename__ = 'evaluations'
-
-    def __repr__(self):
-        return '{}'.format(self.id)
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     date = db.Column(db.Date, nullable=False, default=get_date_br)
     type = db.Column(db.String(1), nullable=False)
 
     patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False)
-    # patient = relationship("Patient", back_populates="evaluation")
+    patient = relationship('Patient', backref="patient")
 
     evaluator_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     # evaluator = relationship("User", back_populates="evaluations")
 
-    words = relationship("Word", secondary='word_evaluation')
+    words = relationship("Word", secondary='word_evaluation', lazy="joined", join_depth=2)
 
     def save_to_db(self):
         db.session.add(self)
@@ -249,12 +209,6 @@ class Evaluation(db.Model):
     @classmethod
     def find_by_id(cls, eval_id):
         return db.session.query(Evaluation).filter_by(id=eval_id).first()
-
-
-class EvaluationSchema(ma.Schema):
-    class Meta:
-        model = Evaluation
-        fields = ('id', 'date', 'type')
 
 
 class Word(db.Model):
@@ -280,30 +234,23 @@ class Word(db.Model):
 
     def update_to_db(self, word, tip):
         db.session.query(Word) \
-            .filter_by(word=self.word) \
+            .filter(func.lower(Word.word) == func.lower(word))\
             .update({'word': word, 'tip': tip})
         db.session.commit()
 
     @classmethod
     def delete_by_word(cls, word):
-        word_delete = db.session.query(Word).filter_by(word=word).first()
+        word_delete = db.session.query(Word).filter(func.lower(Word.word) == func.lower(word)).first()
         db.session.delete(word_delete)
         db.session.commit()
 
     @classmethod
     def find_by_word(cls, word):
-        return db.session.query(Word).filter_by(word=word).first()
+        return db.session.query(Word).filter(func.lower(Word.word) == func.lower(word)).first()
 
     @classmethod
     def return_all(cls):
         return db.session.query(Word).all()
-
-
-class WordSchema(ma.Schema):
-
-    class Meta:
-        model = Word
-        fields = ('id', 'word', 'tip', 'order')
 
 
 class User(db.Model):
@@ -378,14 +325,6 @@ class User(db.Model):
                                                 complete=False).first()
 
 
-class UserSchema(ma.Schema):
-    class Meta:
-        model = User
-        # Fields to expose
-        fields = ('username', 'fullname', 'type')
-
-
-
 class RevokedToken(db.Model):
     __tablename__ = 'revoked_tokens'
 
@@ -423,10 +362,14 @@ class Patient(db.Model):
     address = db.Column(db.String(255))
     created_at = db.Column(db.Date, nullable=False, default=get_date_br)
 
-    evaluation = relationship("Evaluation", backref="patient")
+    evaluation = relationship("Evaluation", backref="evaluations")
 
     def save_to_db(self):
         db.session.add(self)
+        db.session.commit()
+
+    def delete(self):
+        db.session.delete(self)
         db.session.commit()
 
     def update_to_db(self, name, birth, sex, school, school_type, caregiver, phone, city, state, address):
@@ -450,6 +393,10 @@ class Patient(db.Model):
         return db.session.query(Patient).filter_by(name=name).first()
 
     @classmethod
+    def ilike_by_name(cls, name):
+        return db.session.query(Patient).filter(Patient.name.ilike('%' + name + '%'))
+
+    @classmethod
     def find_by_id(cls, id):
         return db.session.query(Patient).filter_by(id=id).first()
 
@@ -460,5 +407,43 @@ class Patient(db.Model):
 
 class PatientSchema(ma.Schema):
     class Meta:
-        fields = ('id', 'name', 'birth', 'sex', 'school', 'school_type', 'caregiver', 'phone', 'city', 'state', 'address')
+        fields = (
+            'id', 'name', 'birth', 'sex', 'school', 'school_type', 'caregiver', 'phone', 'city', 'state', 'address')
         model = Patient
+
+
+class EvaluationSchema(ma.Schema):
+    patient = fields.Nested(PatientSchema)
+
+    class Meta:
+        model = Evaluation
+        fields = ('id', 'date', 'type', 'patient')
+
+
+class UserSchema(ma.Schema):
+    class Meta:
+        model = User
+        # Fields to expose
+        fields = ('username', 'fullname', 'type')
+
+
+class WordSchema(ma.Schema):
+    class Meta:
+        model = Word
+        fields = ('id', 'word', 'tip', 'order')
+
+
+class WordTranscriptionSchema(ma.ModelSchema):
+    class Meta:
+        model = WordTranscription
+        fields = ('id', 'transcription', 'type')
+        sqla_session = db.session
+
+
+class WordEvaluationSchema(ma.ModelSchema):
+    word = fields.Nested(WordSchema)
+    transcription_target = fields.Nested(WordTranscriptionSchema)
+
+    class Meta:
+        model = WordEvaluation
+        fields = ('transcription_target', 'word', 'transcription_eval', 'repetition', 'audio_path', 'ml_eval', 'api_eval', 'therapist_eval')

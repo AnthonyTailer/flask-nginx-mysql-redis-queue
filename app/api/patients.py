@@ -55,7 +55,7 @@ def patient_registration():
         return jsonify({'message': 'Algo de errado não está certo, não foi possível criar o paciente'}), 500
 
 
-@bp.route('/patient/<int:patient_id>', methods=['GET', 'PUT'])
+@bp.route('/patient/<int:patient_id>', methods=['GET', 'PUT', 'DELETE'])
 @token_auth.login_required
 def patient_info_change(patient_id=None):
     if not patient_id:
@@ -71,6 +71,16 @@ def patient_info_change(patient_id=None):
         patient_schema = PatientSchema()
         output = patient_schema.dump(patient).data
         return jsonify(output), 200
+
+    elif request.method == 'DELETE':
+        try:
+            patient.delete()
+            return jsonify({
+                'message': 'Paciente deletado com sucesso',
+            }), 202
+        except Exception as e:
+            current_app.logger.error('DELETE PACIENT -> {}'.format(e))
+            return jsonify({'message': 'Paciente não foi deletado, {}'.format(e)}), 500
 
     elif request.method == 'PUT':
 
@@ -121,6 +131,20 @@ def patient_info_change(patient_id=None):
 @token_auth.login_required
 def patient_get_all():
     patients = Patient.return_all()
+    patient_schema = PatientSchema()
+    output = patient_schema.dump(patients, many=True).data
+    return jsonify(output), 200
+
+
+@bp.route('/patient', methods=['GET'])
+@token_auth.login_required
+def patient_by_name():
+    patient = request.args.get('name')
+
+    if not patient:
+        return bad_request('Paciente não informado')
+
+    patients = Patient.ilike_by_name(patient)
     patient_schema = PatientSchema()
     output = patient_schema.dump(patients, many=True).data
     return jsonify(output), 200

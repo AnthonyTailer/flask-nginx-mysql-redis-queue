@@ -5,7 +5,7 @@ from app.api import bp
 from flask import current_app
 
 from app.helpers import is_in_choices
-from app.models import Patient, Evaluation, EvaluationSchema
+from app.models import Patient, Evaluation, EvaluationSchema, WordEvaluation, WordEvaluationSchema
 
 
 @bp.route('/evaluation', methods=['POST'])
@@ -65,7 +65,14 @@ def evaluation_info_change(evaluation_id=None):
     if request.method == 'GET':
         evaluation_schema = EvaluationSchema()
         evaluation_output = evaluation_schema.dump(evaluation).data
-        return jsonify(evaluation_output), 200
+        word_evaluations = WordEvaluation.find_evaluations_by_id(evaluation_id)
+        word_evaluation_schema = WordEvaluationSchema(many=True)
+        word_evaluation_output = word_evaluation_schema.dump(word_evaluations).data
+
+        result = {'data': evaluation_output}
+        result['data']['evaluations'] = word_evaluation_output
+
+        return jsonify(result), 200
 
     if request.method == 'PUT':
         data = request.get_json(silent=True) or {}
