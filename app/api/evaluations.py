@@ -5,7 +5,7 @@ from app.api import bp
 from flask import current_app
 
 from app.helpers import is_in_choices
-from app.models import Patient, Evaluation, EvaluationSchema, WordEvaluation, WordEvaluationSchema
+from app.models import Patient, Evaluation, EvaluationSchema, WordEvaluation, WordEvaluationSchema, EnumType
 
 
 @bp.route('/evaluation', methods=['POST'])
@@ -13,22 +13,24 @@ from app.models import Patient, Evaluation, EvaluationSchema, WordEvaluation, Wo
 def evaluation_registration():
     data = request.get_json(silent=True) or {}
 
-    if 'patient_id' not in data or 'type' not in data:
-        return bad_request('O campo patient_id e type são obrigatórios')
+    if 'type' in data:
+        if not is_in_choices(data['type'], ['R', 'N', 'F']):
+            return bad_request('O tipo de avaliação deve ser uma string válida (R,N,F)')
 
-    if not is_in_choices(data['type'], ['R', 'N', 'F']):
-        return bad_request('O tipo de avaliação deve ser uma string válida (R,N,F)')
+    patient = None
+    current_user = g.current_user
 
-    patient = Patient.find_by_id(data['patient_id'])
+    if 'patient_id' in data and current_user.type == EnumType.therapist.__str__():  # terapeuta pode submeter avaliações para qualquer tipo de paciente
+        patient = Patient.find_by_id(data['patient_id'])
+    elif current_user.type == EnumType.anonymous.__str__():  # usuário anonymous somente submete avaliação a ele mesmo
+        patient = Patient.get_patient_by_user_id(current_user.id)
 
     if not patient:
         current_app.logger.warn('Paciente inexistente')
         return bad_request('Paciente inexistente')
 
-    current_user = g.current_user
-
     new_evaluation = Evaluation(
-        type=data['type'],
+        type=data['type'] if 'type' in data else None,
         patient_id=patient.id,
         evaluator_id=current_user.id,
     )
@@ -38,7 +40,8 @@ def evaluation_registration():
         current_app.logger.info('Avaliação criada com sucesso')
         return jsonify({
             'message': 'Avaliação criada com sucesso',
-            'route': '/api/evaluation/{}'.format(new_evaluation.id)
+            'route': '/api/evaluation/{}'.format(new_evaluation.id),
+            'id': new_evaluation.id
         }), 201
     except Exception as e:
         current_app.logger.error('Error {}'.format(e))
@@ -59,7 +62,7 @@ def evaluation_info_change(evaluation_id=None):
     if not evaluation:
         return jsonify({'message': 'Avaliação não encontrada'}), 404
 
-    if evaluation.evaluator_id != g.current_user.id:
+    if g.current_user.type == EnumType.anonymous.__str__() and evaluation.evaluator_id != g.current_user.id:  # usuários anonymous somente podem requisitar suas próprias avaliações
         return jsonify({'message': 'Avaliação não encontrada'}), 404
 
     if request.method == 'GET':
@@ -81,15 +84,21 @@ def evaluation_info_change(evaluation_id=None):
 
         if not is_in_choices(data['type'], ['R', 'N', 'F']):
             return bad_request('O tipo de avaliação deve ser uma string válida (R,N,F)')
-
-        patient = Patient.find_by_id(data['patient_id'])
+        patient = None
+        if 'patient_id' in data and g.current_user.type == EnumType.therapist.__str__():  # terapeuta pode submeter avaliações para qualquer tipo de paciente
+            patient = Patient.find_by_id(data['patient_id'])
+        elif g.current_user.type == EnumType.anonymous.__str__():  # usuário anonymous somente submete avaliação a ele mesmo
+            patient = Patient.get_patient_by_user_id(g.current_user.id)
 
         if not patient:
             current_app.logger.warn('Paciente inexistente')
             return bad_request('Paciente inexistente')
 
         try:
-            evaluation.update_to_db(type=data['type'], patient_id=data['patient_id'])
+            evaluation.update_to_db(
+                type=data['type'] if 'type' in data else None,
+                patient_id=patient.id
+            )
             current_app.logger.info('Avaliação alterada com sucesso')
             return jsonify({
                 'message': 'Avaliação alterada com sucesso',
@@ -98,4 +107,3 @@ def evaluation_info_change(evaluation_id=None):
         except Exception as e:
             current_app.logger.error('PUT EVALUATION -> {}'.format(e))
             return jsonify({'message': 'Algo de errado não está certo, {}'.format(e)}), 500
-

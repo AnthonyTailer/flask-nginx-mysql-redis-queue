@@ -9,7 +9,7 @@ from flask import current_app
 from passlib.hash import pbkdf2_sha256 as sha256
 from sqlalchemy.orm.exc import NoResultFound
 
-from app.helpers import get_date_br
+from app.helpers import get_date_br, get_datetime_br
 import redis
 import rq
 from app import db, ma
@@ -33,7 +33,14 @@ class Task(db.Model):
     name = db.Column(db.String(128), index=True)
     description = db.Column(db.String(128))
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    complete = db.Column(db.Boolean, default=False)
+    evaluation_id = db.Column(db.Integer, db.ForeignKey('word_evaluation.evaluation_id'))
+    word_id = db.Column(db.Integer, db.ForeignKey('word_evaluation.word_id'))
+    created_at = db.Column(db.DateTime, nullable=False, default=get_datetime_br)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    result = db.Column(db.String(60), nullable=True)
+
+    evaluation = relationship("WordEvaluation", foreign_keys=[evaluation_id])
+    word = relationship("WordEvaluation",  foreign_keys=[word_id])
 
     def get_rq_job(self):
         try:
@@ -60,11 +67,22 @@ class Task(db.Model):
         if not task:
             return None
 
-        return task.get_rq_job()
+        return Task.get_rq_job_by_id(task.id)
 
     def get_progress(self):
         job = self.get_rq_job()
         return job.meta.get('progress', 0) if job is not None else 100
+
+    @staticmethod
+    def set_task_completed(evaluation_id, word_id, datetime, result):
+        db.session.query(Task) \
+            .filter_by(evaluation_id=evaluation_id) \
+            .filter_by(word_id=word_id) \
+            .update({
+                'completed_at': datetime,
+                'result': str(result)
+            })
+        db.session.commit()
 
 
 class WordTranscription(db.Model):
@@ -116,15 +134,17 @@ class WordEvaluation(db.Model):
     evaluation_id = db.Column(db.Integer, db.ForeignKey('evaluations.id'), primary_key=True)
     word_id = db.Column(db.Integer, db.ForeignKey('words.id'), primary_key=True)
 
-    transcription_target_id = db.Column(db.Integer, db.ForeignKey('transcription.id'))
-    transcription_eval = db.Column(db.String(255), nullable=True)
-    repetition = db.Column(db.Boolean, default=False)
-    audio_path = db.Column(db.String(255), nullable=False)
-    ml_eval = db.Column(db.Boolean)
-    api_eval = db.Column(db.Boolean)
-    therapist_eval = db.Column(db.Boolean)
+    transcription_target_id = db.Column(db.Integer, db.ForeignKey('transcription.id'), nullable=True)
+    transcription_eval_id = db.Column(db.Integer, db.ForeignKey('transcription.id'), nullable=True)
 
-    transcription_target = relationship("WordTranscription", backref="transcription_target")
+    repetition = db.Column(db.Boolean, default=False, nullable=True)
+    audio_path = db.Column(db.String(255), nullable=False)
+    ml_eval = db.Column(db.Boolean, nullable=True)
+    api_eval = db.Column(db.Boolean, nullable=True)
+    therapist_eval = db.Column(db.Boolean, nullable=True)
+
+    transcription_target = relationship("WordTranscription", foreign_keys=[transcription_target_id], backref="transcription_target")
+    transcription_eval = relationship("WordTranscription", foreign_keys=[transcription_eval_id], backref="transcription_eval")
     evaluation = relationship("Evaluation", backref=backref("word_assoc"), lazy="joined", join_depth=2)
     word = relationship("Word", backref=backref("evaluation_assoc"), lazy="joined", join_depth=2)
 
@@ -132,16 +152,25 @@ class WordEvaluation(db.Model):
         db.session.add(self)
         # db.session.commit()
 
-    def update_to_db(self, transcription_target_id, transcription, repetition, audio_path):
+    def update_to_db(self, transcription_target_id, transcription_eval_id, repetition):
         db.session.query(WordEvaluation) \
             .filter_by(evaluation_id=self.evaluation_id) \
             .filter_by(word_id=self.word_id) \
             .update({
-            'transcription_target_id': transcription_target_id,
-            'transcription_eval': transcription,
-            'repetition': repetition,
-            'audio_path': audio_path,
-        })
+                'transcription_target_id': transcription_target_id,
+                'transcription_eval_id': transcription_eval_id,
+                'repetition': repetition,
+            })
+        db.session.commit()
+
+    @staticmethod
+    def update_ml_eval(evaluation_id, word_id, ml_eval):
+        db.session.query(WordEvaluation) \
+            .filter_by(evaluation_id=evaluation_id) \
+            .filter_by(word_id=word_id) \
+            .update({
+                'ml_eval': ml_eval,
+            })
         db.session.commit()
 
     @classmethod
@@ -154,7 +183,7 @@ class WordEvaluation(db.Model):
             current_app.logger.warn(x)
             return {
                 'word': x[1].word.word,
-                'transcription_eval': x[1].transcription_eval,
+                'transcription_eval': x[1].transcription_eval.transcription,
                 'transcription_target': x[1].transcription_target.transcription,
                 'repetition': x[1].repetiton,
 
@@ -179,7 +208,7 @@ class Evaluation(db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     date = db.Column(db.Date, nullable=False, default=get_date_br)
-    type = db.Column(db.String(1), nullable=False)
+    type = db.Column(db.String(1), nullable=True)
 
     patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False)
     patient = relationship('Patient', backref="patient")
@@ -209,6 +238,10 @@ class Evaluation(db.Model):
     @classmethod
     def find_by_id(cls, eval_id):
         return db.session.query(Evaluation).filter_by(id=eval_id).first()
+
+    @classmethod
+    def find_user_evaluation_by_id(cls, eval_id, user_id):
+        return db.session.query(Evaluation).filter_by(evaluator_id=user_id).filter_by(id=eval_id).first()
 
 
 class Word(db.Model):
@@ -290,9 +323,9 @@ class User(db.Model):
     def save_to_db(self):
         db.session.add(self)
 
-    def update_to_db(self, username, fullname, type):
+    def update_to_db(self, username, fullname):
         db.session.query(User).filter_by(username=self.username) \
-            .update({'username': username, 'fullname': fullname, 'type': type})
+            .update({'username': username, 'fullname': fullname})
 
     @staticmethod
     def generate_hash(password):
@@ -307,14 +340,20 @@ class User(db.Model):
         return db.session.query(User).filter_by(username=username).first()
 
     @classmethod
+    def count_by_username(cls, username):
+        return db.session.query(User).filter_by(username=username).count()
+
+    @classmethod
     def change_password(cls, username, new_password):
         db.session.query(User).filter_by(username=username) \
             .update({'password': cls.generate_hash(new_password)})
 
-    def launch_task(self, name, description, *args):
-        rq_job = current_app.task_queue.enqueue('app.tasks.' + name, *args)
-        task = Task(id=rq_job.get_id(), name=name, description=description, user=self)
+    def launch_task(self, **kwargs):
+        rq_job = current_app.task_queue.enqueue('app.tasks.' + kwargs['name'], **kwargs, result_ttl='24h')
+        task = Task(id=rq_job.get_id(), name=kwargs['name'], description=kwargs['description'], user=self,
+                    evaluation_id=kwargs['evaluation_id'], word_id=kwargs['word_id'] )
         db.session.add(task)
+        db.session.commit()
         return task
 
     def get_tasks_in_progress(self):
@@ -350,6 +389,7 @@ class Patient(db.Model):
         return '{}'.format(self.name)
 
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete=u'CASCADE'))
     name = db.Column(db.String(255), nullable=False)
     birth = db.Column(db.Date, nullable=False)
     sex = db.Column(db.String(1))
@@ -375,17 +415,17 @@ class Patient(db.Model):
     def update_to_db(self, name, birth, sex, school, school_type, caregiver, phone, city, state, address):
         db.session.query(Patient).filter_by(id=self.id) \
             .update({
-            'name': name,
-            'birth': birth,
-            'sex': sex,
-            'school': school,
-            'school_type': school_type,
-            'caregiver': caregiver,
-            'phone': phone,
-            'city': city,
-            'state': state,
-            'address': address,
-        })
+                'name': name,
+                'birth': birth,
+                'sex': sex,
+                'school': school,
+                'school_type': school_type,
+                'caregiver': caregiver,
+                'phone': phone,
+                'city': city,
+                'state': state,
+                'address': address,
+            })
         db.session.commit()
 
     @classmethod
@@ -399,6 +439,10 @@ class Patient(db.Model):
     @classmethod
     def find_by_id(cls, id):
         return db.session.query(Patient).filter_by(id=id).first()
+
+    @classmethod
+    def get_patient_by_user_id(cls, id):
+        return db.session.query(Patient).filter_by(user_id=id).first()
 
     @classmethod
     def return_all(cls):

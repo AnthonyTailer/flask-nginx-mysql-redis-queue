@@ -1,52 +1,106 @@
-# Docker + Flask + NGINX + MYSQL + Redis Queue
+# Flask Speech API
 
-Example of how to handle background processes with Flask, Redis Queue, and Docker. Also with MYSQL integration and a NGINX server.  
+## Python 3.6
+
+#### Dependências (Ubuntu 18.04)
+
+- Instalação Banco de Dados **MYSQL Versão **5.7****
+
+```bash
+sudo apt update
+sudo apt install mysql-server
+sudo mysql_secure_installation
+```
+
+- Configurar banco de dados MYSQL
+```bash
+mysql -u root -p
+```
+- Criação do banco
+```bash
+mysql> create database speech_api character set utf8 collate utf8_bin;
+```  
+
+- Instalação Banco de Dados **REDIS**
+```bash
+sudo apt update
+sudo apt install redis-server
+```
+
+#### Instalação do projeto
+
+-  Clonar repositório
+ ```bash
+ git clone --single-branch -b tasks https://github.com/AnthonyTailer/flask-nginx-mysql-redis-queue.git flask-speech-api
+ ```
+- Configurar variaveis de ambiente
+
+    - precisa navegar dentro da pasta do projeto
+```bash
+cd flask-speech-api
+```
+```bash
+ echo "export FLASK_APP=manage.py" >> ~/.profile
+ ```
+ para criar permanente, ou 
+ ```bash
+ export FLASK_APP=manage.py
+ ```
  
+- Configurar arquivo **.env**
 
-* This repository is a mix of:
-    * [testdriven.io - Asynchronous Tasks with Flask and Redis Queue ](https://testdriven.io/asynchronous-tasks-with-flask-and-redis-queue)
-    * [ameyalokare.com - Nginx+Flask+Postgres multi-container setup with Docker Compose](http://www.ameyalokare.com/docker/2017/09/20/nginx-flask-postgres-docker-compose.html)
+    - criar arquivo **.env** na pasta do projeto contendo as informações
+ ```dotenv
+MYSQL_USER=root
+MYSQL_ROOT_PASSWORD=root
+MYSQL_HOST=localhost
+DB_PORT=3306
+DB_NAME=speech_api
+APP_SECRET_KEY=f859989a8ee54b9f84c0b0d481c731ab
+FLASK_DEBUG=1
+ ```
+ 
+#### Instalação das dependêncas do projeto
+usando _pip_ na pasta raiz do projeto:
+ ```bash
+ pip install -f requirements.txt
+ ```
 
-### Quick Start
+#### Rodando a aplicação
+na pasta raiz do projeto:
+ ```bash
+ flask run
+ ``` 
+### Migrando as tabelas do banco
+na pasta raiz do projeto:
+ ```bash
+ flask db upgrade
+ ```
+ ### Inserindo dados de palavras e transcrições
+ na pasta do projeto:
+  ```bash
+ cd app/database
+ ```
+  ```bash
+ mysql -u root -p speech_api < SELECT_t___FROM_speech_api_words_t.sql
+ ```
+ e
+  ```bash
+ mysql -u root -p speech_api < SELECT_t___FROM_speech_api_transcription.sql
+ ```
+ 
+ ### Rodando o Redis Queue Worker
+  na pasta **RAIZ** do projeto:
+ 
+ ```bash
+  rq worker api-tasks
+ ```
+ 
+ ### Rodando o Caso de Teste para criar as avaliações
 
-Spin up the DB container:
-
-```sh
-$ docker-compose up -d db
-```
-
-```sh
-$ docker-compose run --rm web /bin/bash -c "cd /usr/src/app && python -c  'import database; database.init_db()'"
-```
-
-OR use the Alembic Migration System
-```sh
-$ docker-compose run --rm web /bin/bash
-
-$ python manage.py db migrate
-
-$ python manage.py db upgrade
-
-# or to a fully upgrade
-
-$ python manage.py db stamp head
-```
-
-Spin up the others containers:
-```sh
-$ docker-compose up -d
-```
-
-Access db container
-```sh
-$ docker-compose run --rm db mysql -h db -U root
-``` 
-
-Watch the LOGS
-```sh
-$ docker-compose logs -f web
-$ tail -f project/server/logs/resources.log
-```
-
-* http://speech:5001 to view the app
-* http://localhost:9181 to view the RQ dashboard. 
+   na pasta **app/tests** do projeto:
+ ```bash
+ python3 test_case_01.py /home/anthony/Desktop/audios/wave_len_80
+ ```
+ passando o caminho dos audios para a avaliação
+ 

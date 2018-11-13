@@ -5,12 +5,26 @@ from datetime import datetime, timezone, timedelta
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
 import os
+import time
 from PIL import Image
+
+
+def clear_word(w):
+    """Remove os acentos das palavras"""
+    w = w.replace('ã', 'a')
+    w = w.replace('á', 'a')
+    w = w.replace('é', 'e')
+    w = w.replace('ê', 'e')
+    w = w.replace('í', 'i')
+    w = w.replace('ó', 'o')
+    w = w.replace('ç', 'c')
+    return w
 
 
 def generate_hash_from_filename(fname):
     fname = str(uuid.uuid4()) + str(fname)
-    return hashlib.md5(fname.encode("utf-8")).hexdigest()
+    hash_name = hashlib.md5(fname.encode("utf-8")).hexdigest()
+    return datetime.now().strftime('[%y-%m-%d %H:%M:%S]') + hash_name
 
 
 def get_path(fname):
@@ -37,10 +51,20 @@ def is_in_choices(item, choices):
 
 def get_date_br():
     now = datetime.now()
-    diff = timedelta(hours=-3)
-    tz = timezone(diff)
-    sp_now = now.astimezone(tz)
-    return sp_now.strftime('%Y-%m-%d')
+    # diff = timedelta(hours=-3)
+    # tz = timezone(diff)
+    # sp_now = now.astimezone(tz)
+    # return sp_now.strftime('%Y-%m-%d')
+    return now.strftime('%Y-%m-%d')
+
+
+def get_datetime_br():
+    now = datetime.now()
+    # diff = timedelta(hours=-3)
+    # tz = timezone(diff)
+    # sp_now = now.astimezone(tz)
+    # return sp_now.strftime('%Y-%m-%d %H:%M:%S')
+    return now.strftime('%Y-%m-%d %H:%M:%S')
 
 
 rlbp_values = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 6, 6: 5, 7: 6, 8: 7, 9: 1, 10: 2, 11: 10, 12: 8, 13: 10, 14: 9, 15: 10,
@@ -182,9 +206,9 @@ def generate_spectrogram(wd, w):
     fs = 256  # Sampling frequency
     pxx, freqs, bins, im = plt.specgram(data, nfft, fs)
     plt.axis('off')
-
+    tim=str(int(time.time()*1000000))
     wd_path = './app/spectrograms/' + wd + '/'
-    wd_img_path = './app/spectrograms/' + wd + '.png'
+    wd_img_path = './app/spectrograms/' +wd +'/'+ tim+'_' + wd + '.png'
 
     if not os.path.exists(wd_path):
         # logger.info('ML API -> Creating directory structure')
@@ -200,15 +224,18 @@ def generate_spectrogram(wd, w):
     else:
         # logger.info('ML API -> Converting to b&w')
         img = Image.open(wd_img_path).convert('LA')
-        img.save('./app/spectrograms/' + wd + '_gray.png')
+        img.save('./app/spectrograms/' +wd +'/'+ tim+'_' + wd + '_gray.png')
+    return tim
 
-
-def generate_testing_file(wd):
+def generate_testing_file(wd, tim):
     # logger.info('ML API -> Loading b&w')
-    img = Image.open('./app/spectrograms/' + wd + '_gray.png')
+    img = Image.open('./app/spectrograms/' +wd +'/'+ tim+'_' + wd + '_gray.png')
     pix = img.load()
 
-    filename = './app/testing.scikit'
+    if not os.path.exists('./app/testing.scikit/'):
+        # logger.info('ML API -> Creating directory structure')
+        os.makedirs('./app/testing.scikit/')
+    filename = './app/testing.scikit/'+tim
     # logger.info('ML API -> Writing lbp')
     hist = lbp(img, True)  # generate the lbp histogram
     write_scikit(hist, filename)

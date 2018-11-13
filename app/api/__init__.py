@@ -10,6 +10,12 @@ def wants_json_response():
            request.accept_mimetypes['text/html']
 
 
+@bp.app_errorhandler(403)
+def not_found_error(error):
+    if wants_json_response():
+        return errors.error_response(403, 'Acesso não permitido a esta URL ')
+
+
 @bp.app_errorhandler(404)
 def not_found_error(error):
     if wants_json_response():

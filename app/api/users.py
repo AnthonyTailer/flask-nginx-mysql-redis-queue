@@ -1,7 +1,8 @@
 from flask import request, jsonify, g
 
 from app.api.auth import token_auth
-from app.models import User, EnumType, RevokedToken, UserSchema
+from app.helpers import validate_date, is_in_choices
+from app.models import User, EnumType, RevokedToken, UserSchema, Patient
 from app.api import bp
 from flask import current_app
 from app.api.errors import bad_request
@@ -12,19 +13,39 @@ from app import db
 def user_registration():
     data = request.get_json(silent=True) or {}
 
-    if 'username' not in data or 'fullname' not in data or 'password' not in data or 'type' not in data:
+    user_type = None
+    if 'type' in data:
+        try:
+            if data['type'] in EnumType.__members__:
+                user_type = EnumType[data['type']].__str__()
+            else:
+                user_type = EnumType.anonymous.__str__()
+        except (Exception, KeyError, LookupError) as e:
+            return bad_request('Tipo de usuário inválido, {}'.format(e))
+
+    if user_type == EnumType.anonymous.__str__(): # os campos do paciente devem ser obrigatórios também
+        if 'fullname' not in data or 'birth' not in data or 'school_type' not in data \
+                or 'school' not in data or 'city' not in data or 'state' not in data or 'sex' not in data:
+            return bad_request('Os campos username, fullname, password, type, birth, sex, school_type, school, city e state são obrigatórios')
+
+        if not validate_date(data['birth']):
+            return bad_request('O campo birth deve estar no formato YYY-MM-DD')
+
+        if not is_in_choices(data['sex'], ['M', 'F', '']):
+            return bad_request('Sexualidade deve ser um valor válido (M, F), ou não deve ser fornecida')
+
+        if not is_in_choices(data['school_type'], ['PUB', 'PRI']):
+            return bad_request('Orgão escolar é obrigatório e deve ser uma string válida (PUB, PRI) ')
+
+        if Patient.find_by_name(data['fullname']):
+            current_app.logger.warn('Paciente {} já existe'.format(data['fullname']))
+            return jsonify({'message': 'Paciente {} já existe'.format(data['fullname'])}), 422
+
+    if 'username' not in data or 'fullname' not in data or 'password' not in data:
         return bad_request('Os campos username, fullname, password e type são obrigatórios')
 
     if User.find_by_username(data['username']):
-        return bad_request('Usuário {} já esta em uso'.format(data['username']))
-
-    try:
-        if data['type'] in EnumType.__members__:
-            user_type = EnumType[data['type']].__str__()
-        else:
-            user_type = EnumType.anonymous.__str__()
-    except (Exception, KeyError, LookupError) as e:
-        return bad_request('Tipo de usuário inválido, {}'.format(e))
+        return jsonify({'message': 'Usuário {} já esta em uso'.format(data['username'])}), 422
 
     new_user = User(
         username=data['username'],
@@ -37,6 +58,34 @@ def user_registration():
         msg = 'Usuário {} criado com sucesso'.format(data['username'])
         current_app.logger.info(msg)
         db.session.commit()
+
+        if user_type == EnumType.anonymous.__str__():
+            try:
+                new_patient = Patient(
+                    name=data['fullname'],
+                    user_id=new_user.id,
+                    birth=data['birth'],
+                    sex=data['sex'],
+                    school=data['school'],
+                    school_type=data['school_type'],
+                    caregiver=data['caregiver'] if 'caregiver' in data else None,
+                    phone=data['phone'] if 'phone' in data else None,
+                    city=data['city'],
+                    state=data['state'],
+                    address=data['address'] if 'address' in data else None,
+                )
+                new_patient.save_to_db()
+                current_app.logger.info('Usuário Paciente {} criado com sucesso'.format(data['fullname']))
+                return jsonify({
+                    'message': 'Usuário Paciente {} criado com sucesso'.format(data['fullname']),
+                    'login': 'api/login'
+                }), 201
+
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.error('Error {}'.format(e))
+                return jsonify({'message': 'Algo de errado não está certo'}), 500
+
         return jsonify({
             'message': msg,
             'login': 'api/login'
@@ -139,16 +188,17 @@ def user_change_pass():
 @bp.route('/user', methods=['PUT', 'GET'])
 @token_auth.login_required
 def user_info_change():
-
     if request.method == 'GET':
         user_schema = UserSchema()
-        output = user_schema.dump(g.current_user).data
+        output = { 'data': user_schema.dump(g.current_user).data }
+        if g.current_user.type == EnumType.anonymous.__str__():
+            output['more'] = 'api/patient/info'
         return jsonify(output), 200
 
     elif request.method == 'PUT':
         data = request.get_json(silent=True) or {}
-        if 'username' not in data or 'fullname' not in data or 'type' not in data:
-            return bad_request('Os campos username, fullname e type são obrigatórios')
+        if 'username' not in data or 'fullname' not in data:
+            return bad_request('Os campos username, fullname são obrigatórios')
 
         current_user = g.current_user
         new_user = User.find_by_username(data['username'])
@@ -161,7 +211,12 @@ def user_info_change():
                 return bad_request('Usuário {} já esta em uso'.format(data['username']))
 
         try:
-            current_user.update_to_db(data['username'], data['fullname'], data['type'])
+            current_user.update_to_db(data['username'], data['fullname'])
+
+            if data['fullname'] != current_user.fullname:  # alterou o nome
+                patient = Patient.get_patient_by_user_id(current_user.id)  # pega o paciente atribuido a este usuário
+                patient.name = data['fullname']  # atualiza o nome
+
             current_app.logger.info('Usuário alterado com sucesso')
             try:
                 if data['username'].strip() != current_user.username.strip():

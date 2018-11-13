@@ -1,19 +1,25 @@
-import os
+import os, json
 from flask import request, jsonify, g
+from sklearn.datasets import load_svmlight_file
+from sklearn.neighbors import KNeighborsClassifier
+from sqlalchemy import exists
 from werkzeug.utils import secure_filename
 
 from app import db
-from app.api.auth import token_auth
+from app.api.auth import token_auth, only_therapist
 from app.api.errors import bad_request
 from app.helpers import allowed_file, generate_hash_from_filename
 from app.models import Word, WordSchema, WordTranscriptionSchema, WordTranscription, Evaluation, WordEvaluation, \
-    WordEvaluationSchema
+    WordEvaluationSchema, EnumType
 from app.api import bp
 from flask import current_app
 
+init_training = 0
+clf={}
 
 @bp.route('/word', methods=['POST'])
 @token_auth.login_required
+@only_therapist
 def word_registration():
     data = request.get_json(silent=True) or {}
 
@@ -40,9 +46,9 @@ def word_registration():
         return jsonify({'message': 'Algo de errado não está certo, não foi possível cadastrar sua palavra'}), 500
 
 
-@bp.route('/word/<string:word>', methods=['GET', 'PUT', 'DELETE'])
+@bp.route('/word/<string:word>', methods=['GET'])
 @token_auth.login_required
-def word_info_change(word=None):
+def word_info(word=None):
     if not word:
         return bad_request('Palavra não informada')
 
@@ -51,21 +57,32 @@ def word_info_change(word=None):
     if not word_data:
         return bad_request('Palavra não encontrada')
 
-    if request.method == 'GET':
+    word_schema = WordSchema()
+    transcriptions_schema = WordTranscriptionSchema(many=True)
 
-        word_schema = WordSchema()
-        transcriptions_schema = WordTranscriptionSchema(many=True)
+    transcriptions = WordTranscription.find_by_word_id(word_id=word_data.id)
 
-        transcriptions = WordTranscription.find_by_word_id(word_id=word_data.id)
+    word_output = word_schema.dump(word_data).data
+    transcriptions_output = transcriptions_schema.dump(transcriptions).data
+    return jsonify({
+        'data': word_output,
+        'transcriptions': transcriptions_output
+    }), 200
 
-        word_output = word_schema.dump(word_data).data
-        transcriptions_output = transcriptions_schema.dump(transcriptions).data
-        return jsonify({
-            'data': word_output,
-            'transcriptions': transcriptions_output
-        }), 200
 
-    elif request.method == 'PUT':
+@bp.route('/word/<string:word>', methods=['PUT', 'DELETE'])
+@token_auth.login_required
+@only_therapist
+def word_change(word=None):
+    if not word:
+        return bad_request('Palavra não informada')
+
+    word_data = Word.find_by_word(word)
+
+    if not word_data:
+        return bad_request('Palavra não encontrada')
+
+    if request.method == 'PUT':
 
         data = request.get_json(silent=True) or {}
 
@@ -107,24 +124,29 @@ def word_info_change(word=None):
 @bp.route('/word/<string:word>/evaluation/<int:evaluation_id>', methods=['GET', 'POST'])
 @token_auth.login_required
 def word_evaluation(word=None, evaluation_id=None):
+    global init_training,clf
     if not word:
         return bad_request('Palavra não informada')
 
     if not evaluation_id:
         return bad_request('Avaliação não informada')
 
-    evaluation = Evaluation.find_by_id(evaluation_id)
+    evaluation = Evaluation.find_by_id(evaluation_id) if g.current_user.type == EnumType.therapist.__str__() \
+        else Evaluation.find_user_evaluation_by_id(evaluation_id, g.current_user.id)
 
     if not evaluation:
         return jsonify({'message': 'Avaliação não encontrada'}), 404
 
-    if evaluation.evaluator_id != g.current_user.id:
-        return jsonify({'message': 'Avaliação não encontrada'}), 404
+    # if evaluation.evaluator_id != g.current_user.id:
+    #     return jsonify({'message': 'Avaliação não encontrada'}), 404
 
     word_data = Word.find_by_word(word)
 
     if not word_data:
         return bad_request('Palavra não encontrada')
+
+    current_user = g.current_user
+    therapist_user = current_user.type == EnumType.therapist.__str__()
 
     if request.method == 'POST':
 
@@ -136,15 +158,7 @@ def word_evaluation(word=None, evaluation_id=None):
         if audio.filename == '':
             return bad_request('Arquivo de audio não selecionado')
 
-        data = request.form or {}
-
-        if 'transcription_target_id' not in data or 'transcription_eval' not in data:
-            return bad_request('Os campos transcription_target_id e transcription_eval são obrigatórios')
-
-        target_transc = WordTranscription.find_by_transcription_id(data['transcription_target_id'])
-
-        if not target_transc:
-            return bad_request('Transcrição alvo não encontrada')
+        data = json.loads(request.form['form']) if 'form' in request.form else (request.form or {})
 
         if audio and allowed_file(audio.filename):
             filename = secure_filename(audio.filename)
@@ -161,58 +175,88 @@ def word_evaluation(word=None, evaluation_id=None):
                 return jsonify({'message': 'Algo de errado não está certo, {}'.format(e)}), 500
             else:
 
-                therapist_eval = None
-                if 'transcription_eval' in data:
-                    therapist_eval = data['transcription_eval'] == target_transc.transcription
+                #    Aceita 2 tipos de avaliação do terapeuta
+                #    1 - Indicando a transcrição identificada (transcription_eval) e a transcrição alvo (transcription_target_id)
+                #    2 - Indicando se a pronúncia foi dita corretamente diretamente (therapist_eval)
+
+                target_transc = WordTranscription.find_by_transcription_id(
+                    data['transcription_target_id']) if 'transcription_target_id' in data and therapist_user else None
+                eval_transc = WordTranscription.find_by_transcription_id(
+                    data['transcription_eval_id']) if 'transcription_eval_id' in data and therapist_user else None
+
+                if not target_transc and 'transcription_target_id' in data and therapist_user:
+                    return bad_request('Transcrição alvo não encontrada')
+                if not eval_transc and 'transcription_eval_id' in data and therapist_user:
+                    return bad_request('Transcrição avaliada não encontrada')
 
                 new_word_eval = WordEvaluation(
                     evaluation_id=evaluation.id,
                     word_id=word_data.id,
-                    transcription_target_id=target_transc.id,
-                    transcription_eval=data['transcription_eval'] if 'transcription_eval' in data else None,
+                    transcription_target_id=target_transc.id if target_transc is not None else target_transc,
+                    transcription_eval_id=eval_transc.id if eval_transc is not None else eval_transc,
                     repetition=data['repetition'] if 'repetition' in data else False,
                     audio_path=full_path,
-                    therapist_eval=therapist_eval
+                    therapist_eval=int(data['therapist_eval']) if 'therapist_eval' in data and therapist_user else None
                 )
 
                 try:
 
-                    current_user = g.current_user
+                    row_exists = db.session.query(
+                        db.exists().where(WordEvaluation.evaluation_id == evaluation_id).where(
+                            WordEvaluation.word_id == word_data.id)).scalar()
+
+                    if row_exists:
+                        raise Exception('Uma avaliação com estes dados já foi submetida')
 
                     new_word_eval.save_to_db()
-                    db.session.commit()
 
                     #  GOOGLE API AUDIO EVALUATION
-                    task1 = current_user.launch_task(
-                        'google_transcribe_audio',
-                        'Audio Evaluation with Google API',
-                        evaluation.id,
-                        word_data.id,
-                        word,
-                        full_path
-                    )
+                    # task1 = current_user.launch_task(
+                    #     'google_transcribe_audio',
+                    #     'Audio Evaluation with Google API',
+                    #     evaluation.id,
+                    #     word_data.id,
+                    #     word,
+                    #     full_path
+                    # )
+
+                    if init_training == 0:
+
+                        for key in ['Anel', 'Barriga', 'Batom', 'Bebe', 'Beijo', 'Biblioteca', 'Bicicleta', 'Bolsa']:
+                            X_train, y_train = load_svmlight_file('./app/training_files/' + key)
+
+                            # clf[key] = tree.DecisionTreeClassifier()
+                            clf[key] = KNeighborsClassifier()
+
+                            current_app.logger.info("ML API -> Fitting classifier...")
+                            clf[key].fit(X_train, y_train)
+                        init_training = 1
 
                     # ML AUDIO EVALUATION
                     task2 = current_user.launch_task(
-                        'ml_transcribe_audio',
-                        'Audio Evaluation',
-                        evaluation.id,
-                        word_data.id,
-                        word,
-                        full_path
+                        name='ml_transcribe_audio',
+                        description='Audio Evaluation',
+                        evaluation_id=evaluation.id,
+                        word_id=word_data.id,
+                        word=word,
+                        wd_audio_path=full_path,
+                        clf=clf
                     )
+
+                    db.session.commit()
                     return jsonify({
                         'message': 'Avaliação do audio criada com sucesso e está sendo processada...',
                         'data': {
-                            'task_api_id': task1.id,
-                            'url_api': 'api/task/' + str(task1.id),
+                            # 'task_api_id': task1.id,
+                            # 'url_api': 'api/task/' + str(task1.id),
                             'task_ml_id': task2.id,
                             'url_ml': 'api/task/' + str(task2.id),
                         }
                     }), 201
                 except Exception as e:
                     db.session.rollback()
-                    audio.delete(full_path)
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
                     current_app.logger.error('POST WORD_EVALUATION -> {}'.format(e))
                     return jsonify({'message': 'Algo de errado não está certo, {}'.format(e)}), 500
         else:
@@ -220,7 +264,10 @@ def word_evaluation(word=None, evaluation_id=None):
 
     if request.method == 'GET':
 
-        word_eval = WordEvaluation.find_word_evaluation_by_id_and_word(evaluation_id, word)
+        evaluation = Evaluation.find_by_id(evaluation_id) if therapist_user \
+            else Evaluation.find_user_evaluation_by_id(evaluation_id, current_user.id)
+
+        word_eval = WordEvaluation.find_word_evaluation_by_id_and_word(evaluation.id, word)
 
         if not word_eval:
             return bad_request('avaliação não encontrada')
