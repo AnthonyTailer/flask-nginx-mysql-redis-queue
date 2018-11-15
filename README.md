@@ -63,7 +63,7 @@ FLASK_DEBUG=1
 #### Instalação das dependêncas do projeto
 usando _pip_ na pasta raiz do projeto:
  ```bash
- pip install -f requirements.txt
+ pip install -r requirements.txt
  ```
 
 #### Rodando a aplicação
