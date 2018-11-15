@@ -239,7 +239,8 @@ def main(argv):
         # cada palavra seleciona uma posição aleatória, indicando uma request a ser feita
 
         # for key in word_evaluation_requests.keys():
-        for key in ['anel', 'barriga', 'batom', 'beijo', 'bolsa']:
+        # for key in ['anel', 'barriga', 'batom', 'beijo', 'bolsa']:
+        for key in ['anel', 'barriga', 'batom']:
             word = word_evaluation_requests[key]
             for eval_id in test_evaluations_id:  # loop por cada avaliação
                 random_pos = random.randint(0, len(word) - 1)
