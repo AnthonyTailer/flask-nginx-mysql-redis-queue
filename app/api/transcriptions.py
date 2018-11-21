@@ -31,7 +31,8 @@ def word_transcription_registration():
         current_app.logger.info('Transcrição de {} criada com sucesso'.format(data['word']))
         return jsonify({
             'message': 'Transcrição de {} criada com sucesso'.format(data['word']),
-            'route': '/api/word/transcription/{}'.format(new_transcription.id)
+            'id': new_transcription,
+            'info': '/api/word/transcription/{}'.format(new_transcription.id)
         }), 201
     except Exception as e:
         current_app.logger.error('Error {}'.format(e))
@@ -78,7 +79,8 @@ def word_transcription_info_change(transcription_id=None):
             current_app.logger.info('transcrição {} atualizada com sucesso'.format(data['transcription']))
             return jsonify({
                        'message': 'transcrição {} atualizada com sucesso'.format(data['transcription']),
-                       'route': '/api/word/transcription/{}'.format(transc.id)
+                        'id': transc.id,
+                       'info': '/api/word/transcription/{}'.format(transc.id)
                    }), 200
         except Exception as e:
             current_app.logger.error('Error {}'.format(e))
@@ -91,7 +93,7 @@ def word_transcription_info_change(transcription_id=None):
             current_app.logger.info('Transcrição {} deletada com sucesso'.format(transc.transcription))
             return jsonify({
                 'message': 'Transcrição {} deletada com sucesso'.format(transc.transcription),
-            }), 200
+            }), 202
         except Exception as e:
             current_app.logger.error('Error {}'.format(e))
             return jsonify({'message': 'Algo de errado não está certo, não foi possível deletar sua Transcrição'}), 500

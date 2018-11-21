@@ -16,6 +16,7 @@ def user_registration():
     user_type = None
     if 'type' in data:
         try:
+            data['type'] = data['type'].lower()
             if data['type'] in EnumType.__members__:
                 user_type = EnumType[data['type']].__str__()
             else:
